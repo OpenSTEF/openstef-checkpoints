@@ -9,16 +9,44 @@ name: ci
 # workflow lives).
 on: [push, pull_request]
 
+permissions:
+  contents: read
+
 jobs:
   quality:
+    name: Quality checks (poe)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      # The [chronos] extra (torch + chronos-forecasting) is needed so `ty` can
-      # type-check the torch export modules. It is heavy; cache keeps it bearable.
-      - run: uv sync --extra chronos
-      - run: uv run ruff check .
-      - run: uv run ruff format --check .
-      - run: uv run ty check
-      - run: uv run pytest -q
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --frozen --extra chronos
+
+      # Mirror `poe all --check` as discrete steps for granular logs; always() runs
+      # them all, then the final gate fails the job if any failed.
+      - name: reuse
+        if: ${{ always() }}
+        run: uv run poe reuse
+      - name: licensecheck
+        if: ${{ always() }}
+        run: uv run poe licensecheck --check
+      - name: lint
+        if: ${{ always() }}
+        run: uv run poe lint --check
+      - name: format
+        if: ${{ always() }}
+        run: uv run poe format --check
+      - name: lock
+        if: ${{ always() }}
+        run: uv run poe lock --check
+      - name: type
+        if: ${{ always() }}
+        run: uv run poe type
+      - name: tests
+        if: ${{ always() }}
+        run: uv run poe tests
+
+      - name: Fail if any quality step failed
+        if: ${{ failure() }}
+        run: exit 1

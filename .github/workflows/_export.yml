@@ -31,9 +31,9 @@ jobs:
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv sync --extra chronos
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --extra chronos
       - name: Export + verify
         run: uv run fmckpt export "${{ inputs.model }}" --out artifacts
       - name: Publish

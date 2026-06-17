@@ -45,8 +45,10 @@ prerelease = "explicit"
 
 [dependency-groups]
 dev = [
+  "licensecheck>=2025.1",
   "poethepoet>=0.29",
   "pytest>=8",
+  "reuse>=5.0.2",
   "ruff>=0.12.8",
   "ty>=0.0.1a10",
 ]
@@ -67,13 +69,22 @@ all = "error"
 possibly-missing-attribute = "ignore" # large number of false positives, captured by ruff
 possibly-missing-import = "ignore"    # large number of false positives, captured by ruff(I002)
 
+[tool.licensecheck]
+# MPL-2.0 is compatible with Apache/BSD/MIT; licensecheck flags Apache as a false
+# positive (it is explicitly listed compatible by the MPL), so ignore it.
+ignore_licenses = [ "apache software license", "apache license 2.0" ]
+
 [tool.poe.tasks.lint]
-help = "Lint with ruff (ALL rules)"
-cmd = "ruff check --fix"
+help = "Lint with ruff (ALL rules); --check to not fix"
+args = [ { name = "check", type = "boolean", help = "Only report, do not fix" } ]
+control.expr = "check"
+switch = [ { case = "True", cmd = "ruff check" }, { cmd = "ruff check --fix" } ]
 
 [tool.poe.tasks.format]
-help = "Format with ruff"
-cmd = "ruff format"
+help = "Format with ruff; --check to verify only"
+args = [ { name = "check", type = "boolean", help = "Only check formatting" } ]
+control.expr = "check"
+switch = [ { case = "True", cmd = "ruff format --check" }, { cmd = "ruff format" } ]
 
 [tool.poe.tasks.type]
 help = "Type-check with ty"
@@ -82,3 +93,54 @@ cmd = "ty check"
 [tool.poe.tasks.tests]
 help = "Run the test suite"
 cmd = "pytest"
+
+[tool.poe.tasks.lock]
+help = "Refresh the lockfile; --check to verify it is current"
+cmd = "uv lock ${check:+--check}"
+args = [ { name = "check", type = "boolean", help = "Only verify the lockfile is up to date" } ]
+
+[tool.poe.tasks.reuse]
+help = "Check REUSE compliance (with optional --fix)"
+args = [ { name = "fix", type = "boolean", help = "Annotate missing SPDX headers before linting" } ]
+control.expr = "fix"
+switch = [
+  { case = "True", cmd = "uv run tools/reuse-fix.py --license \"MPL-2.0\" --copyright \"Contributors to the OpenSTEF project <openstef@lfenergy.org>\"" },
+  { cmd = "reuse lint" },
+]
+
+[tool.poe.tasks.licensecheck]
+help = "Audit distributed dependency licenses (runtime + [chronos]) for MPL-2.0 compatibility"
+# Feed licensecheck the lock export scoped to what we ship (runtime + the chronos extra,
+# excluding the dev group): deterministic, and avoids depgather needing a resolver on PATH.
+args = [ { name = "check", type = "boolean", help = "Exit non-zero on an incompatible license" } ]
+control.expr = "check"
+switch = [
+  { case = "True", shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/fmckpt-licensecheck.txt && licensecheck -r /tmp/fmckpt-licensecheck.txt --zero --show-only-failing" },
+  { shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/fmckpt-licensecheck.txt && licensecheck -r /tmp/fmckpt-licensecheck.txt" },
+]
+
+[tool.poe.tasks.all]
+help = "Run the full CI sequence; --check to verify without writing"
+control.expr = "check"
+args = [ { name = "check", type = "boolean", help = "Only check, do not fix/write" } ]
+# Lint (sorts imports) must precede format (cannot sort imports).
+switch = [
+  { case = "True", sequence = [
+    "reuse",
+    "licensecheck --check",
+    "lint --check",
+    "format --check",
+    "lock --check",
+    "type",
+    "tests",
+  ], ignore_fail = "return_non_zero" },
+  { sequence = [
+    "licensecheck --check",
+    "reuse --fix",
+    "lint",
+    "format",
+    "lock",
+    "type",
+    "tests",
+  ], ignore_fail = "return_non_zero" },
+]

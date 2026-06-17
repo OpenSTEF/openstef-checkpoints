@@ -1,0 +1,13 @@
+version = 1
+
+# Files that cannot carry an inline SPDX header (binary/JSON/generated) are licensed here.
+[[annotations]]
+path = [
+    "uv.lock",
+    "tests/checkpoint.golden.json",
+    "src/fmckpt/models/chronos2/card.md.jinja",
+    "**/__pycache__/**",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>"
+SPDX-License-Identifier = "MPL-2.0"
