@@ -73,6 +73,29 @@ possibly-missing-import = "ignore"    # large number of false positives, capture
 # MPL-2.0 is compatible with Apache/BSD/MIT; licensecheck flags Apache as a false
 # positive (it is explicitly listed compatible by the MPL), so ignore it.
 ignore_licenses = [ "apache software license", "apache license 2.0" ]
+# NVIDIA CUDA runtime libraries are proprietary but freely-redistributable GPU
+# components that torch pulls transitively on Linux — not our code and not an MPL
+# compatibility concern. Acknowledged here; a new CUDA major (new -cuNN suffixes)
+# would re-surface in CI for a fresh review.
+ignore_packages = [
+  "cuda-bindings",
+  "cuda-toolkit",
+  "nvidia-cublas",
+  "nvidia-cuda-cupti",
+  "nvidia-cuda-nvrtc",
+  "nvidia-cuda-runtime",
+  "nvidia-cudnn-cu13",
+  "nvidia-cufft",
+  "nvidia-cufile",
+  "nvidia-curand",
+  "nvidia-cusolver",
+  "nvidia-cusparse",
+  "nvidia-cusparselt-cu13",
+  "nvidia-nccl-cu13",
+  "nvidia-nvjitlink",
+  "nvidia-nvshmem-cu13",
+  "nvidia-nvtx",
+]
 
 [tool.poe.tasks.lint]
 help = "Lint with ruff (ALL rules); --check to not fix"
