@@ -19,7 +19,10 @@ requires-python = ">=3.12,<4.0"
 # and the CLI. Producing a checkpoint additionally needs the heavy source-model
 # stack, kept behind the [chronos] extra so lint/type/test stay light by default.
 dependencies = [
-  "huggingface-hub>=1.2.2",
+  # Low floor on purpose: chronos-forecasting's transformers stack caps huggingface-hub
+  # below 1.0, and the publish API (HfApi.upload_folder/create_repo) is available far below
+  # that. Pinning >=1.x makes the [chronos] extra unresolvable.
+  "huggingface-hub>=0.24",
   "jinja2>=3.1",
   "numpy>=2",
   "onnx>=1.17",
@@ -35,9 +38,10 @@ optional-dependencies.chronos = [
 scripts.fmckpt = "fmckpt.cli:app"
 
 [tool.uv]
-# chronos-forecasting's Chronos-2 line is a pre-release; allow it so the [chronos]
-# extra resolves (older stable fallbacks pin numpy<1.17 and conflict).
-prerelease = "allow"
+# "explicit" allows pre-releases ONLY for packages whose specifier requests one
+# (here chronos-forecasting>=2.2.0rc4, the Chronos-2 line). Everything else stays on
+# stable releases — a blanket "allow" would also pull pre-release numpy/pydantic/etc.
+prerelease = "explicit"
 
 [dependency-groups]
 dev = [

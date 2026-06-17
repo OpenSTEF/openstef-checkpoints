@@ -13,6 +13,7 @@ that exports the FP32 bases, derives the FP16/INT8 variants, and verifies each.
 import logging
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any, override
 
 import numpy as np
 import torch
@@ -55,6 +56,7 @@ class Chronos2OnnxModule(nn.Module):
         self.model = model
         self.num_output_patches = num_output_patches
 
+    @override
     def forward(
         self,
         context: torch.Tensor,
@@ -89,29 +91,29 @@ def _register_symbolic_ops(opset: int) -> None:
     """Lower aten ops the legacy exporter can't map: arcsinh, NaN-aware reductions, unfold."""
 
     def asinh(g: object, x: object) -> object:
-        return g.op("Asinh", x)  # type: ignore[attr-defined]
+        return g.op("Asinh", x)  # type: ignore
 
     def sinh(g: object, x: object) -> object:
-        return g.op("Sinh", x)  # type: ignore[attr-defined]
+        return g.op("Sinh", x)  # type: ignore
 
     def nan_filled(g: object, x: object) -> tuple[object, object]:
-        is_nan = g.op("IsNaN", x)  # type: ignore[attr-defined]
-        zero = g.op("Constant", value_t=torch.tensor(0.0, dtype=torch.float32))  # type: ignore[attr-defined]
-        return g.op("Where", is_nan, zero, x), g.op("Not", is_nan)  # type: ignore[attr-defined]
+        is_nan = g.op("IsNaN", x)  # type: ignore
+        zero = g.op("Constant", value_t=torch.tensor(0.0, dtype=torch.float32))  # type: ignore
+        return g.op("Where", is_nan, zero, x), g.op("Not", is_nan)  # type: ignore
 
     @symbolic_helper.parse_args("v", "is", "i", "none")
     def nansum(g: object, x: object, dim: list[int], keepdim: int, _dtype: object) -> object:
         filled, _ = nan_filled(g, x)
-        axes = g.op("Constant", value_t=torch.tensor(dim, dtype=torch.int64))  # type: ignore[attr-defined]
-        return g.op("ReduceSum", filled, axes, keepdims_i=keepdim)  # type: ignore[attr-defined]
+        axes = g.op("Constant", value_t=torch.tensor(dim, dtype=torch.int64))  # type: ignore
+        return g.op("ReduceSum", filled, axes, keepdims_i=keepdim)  # type: ignore
 
     @symbolic_helper.parse_args("v", "is", "i", "none")
     def nanmean(g: object, x: object, dim: list[int], keepdim: int, _dtype: object) -> object:
         filled, not_nan = nan_filled(g, x)
-        axes = g.op("Constant", value_t=torch.tensor(dim, dtype=torch.int64))  # type: ignore[attr-defined]
-        total = g.op("ReduceSum", filled, axes, keepdims_i=keepdim)  # type: ignore[attr-defined]
-        count = g.op("ReduceSum", g.op("Cast", not_nan, to_i=_ONNX_FLOAT), axes, keepdims_i=keepdim)  # type: ignore[attr-defined]
-        return g.op("Div", total, count)  # type: ignore[attr-defined]
+        axes = g.op("Constant", value_t=torch.tensor(dim, dtype=torch.int64))  # type: ignore
+        total = g.op("ReduceSum", filled, axes, keepdims_i=keepdim)  # type: ignore
+        count = g.op("ReduceSum", g.op("Cast", not_nan, to_i=_ONNX_FLOAT), axes, keepdims_i=keepdim)  # type: ignore
+        return g.op("Div", total, count)  # type: ignore
 
     @symbolic_helper.parse_args("v", "i", "i", "i")
     def unfold(g: object, x: object, _dim: int, size: int, step: int) -> object:
@@ -119,11 +121,11 @@ def _register_symbolic_ops(opset: int) -> None:
         if size != step:
             msg = f"unfold supports only size == step (got {size}, {step})"
             raise NotImplementedError(msg)
-        zero = g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64))  # type: ignore[attr-defined]
-        neg1 = g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))  # type: ignore[attr-defined]
-        size1d = g.op("Constant", value_t=torch.tensor([size], dtype=torch.int64))  # type: ignore[attr-defined]
-        prefix = g.op("Slice", g.op("Shape", x), zero, neg1, zero)  # type: ignore[attr-defined]
-        return g.op("Reshape", x, g.op("Concat", prefix, neg1, size1d, axis_i=0))  # type: ignore[attr-defined]
+        zero = g.op("Constant", value_t=torch.tensor([0], dtype=torch.int64))  # type: ignore
+        neg1 = g.op("Constant", value_t=torch.tensor([-1], dtype=torch.int64))  # type: ignore
+        size1d = g.op("Constant", value_t=torch.tensor([size], dtype=torch.int64))  # type: ignore
+        prefix = g.op("Slice", g.op("Shape", x), zero, neg1, zero)  # type: ignore
+        return g.op("Reshape", x, g.op("Concat", prefix, neg1, size1d, axis_i=0))  # type: ignore
 
     for name, fn in (("asinh", asinh), ("sinh", sinh), ("nansum", nansum), ("nanmean", nanmean), ("unfold", unfold)):
         register_custom_op_symbolic(f"aten::{name}", fn, opset)
@@ -202,7 +204,7 @@ def _plan(model: Chronos2Model, inner: nn.Module) -> _Plan:
     Returns:
         The clamped context, patch count, horizon and the model's quantile grid.
     """
-    cfg = inner.chronos_config  # type: ignore[attr-defined]
+    cfg: Any = inner.chronos_config  # chronos-specific config object; dynamically typed
     context_length = min(model.context_length, int(cfg.context_length))
     if model.context_length > int(cfg.context_length):
         logger.warning("Context %d exceeds model max %d; clamping", model.context_length, int(cfg.context_length))
