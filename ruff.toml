@@ -1,0 +1,45 @@
+# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+target-version = "py312"
+line-length = 120
+src = [ "src" ]
+include = [ "src/**/*.py", "tests/**/*.py" ]
+output-format = "concise"
+format.preview = true
+lint.select = [ "ALL" ]
+lint.ignore = [
+  "COM812", # conflicts with the formatter
+  "CPY001", # REUSE/SPDX headers cover copyright
+  "D203",   # conflicting docstring rules
+  "D213",   # conflicting docstring rules
+  "EM101",  # do not enforce message-in-variable when raising
+  "FIX002", # TODOs allowed when linked to an issue
+  "PGH003", # allow generic type-ignores
+  "TRY003", # simpler exception messages
+]
+lint.per-file-ignores."./src/fmckpt/cli.py" = [
+  "FBT001", # typer uses boolean flags as command parameters
+  "FBT002",
+]
+lint.per-file-ignores."./tests/*" = [
+  "ARG",     # fixtures are functionally relevant even when unused
+  "D",       # docstring rules
+  "DOC",     # docstring rules
+  "E501",    # long lines (descriptive test data/names)
+  "PLR2004", # magic values in assertions are fine
+  "RUF069",  # tests assert exact, deterministic float outputs
+  "S101",    # asserts allowed in tests
+  "S311",    # standard pseudo-random generators
+  "SLF001",  # private access allowed in tests
+]
+lint.fixable = [ "ALL" ]
+lint.flake8-annotations.allow-star-arg-any = true
+lint.flake8-annotations.suppress-dummy-args = true
+lint.flake8-annotations.suppress-none-returning = true
+lint.isort.known-first-party = [ "src", "tests" ]
+lint.pydocstyle.convention = "google"
+lint.pylint.allow-dunder-method-names = [ "__get_pydantic_core_schema__", "__pydantic_init_subclass__" ]
+lint.pylint.max-args = 7
+lint.preview = true

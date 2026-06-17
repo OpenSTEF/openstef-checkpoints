@@ -1,0 +1,37 @@
+---
+license: mpl-2.0
+library_name: onnx
+tags:
+  - time-series-forecasting
+  - chronos
+  - onnx
+  - openstef
+---
+
+# {{ slug }} — ONNX checkpoints
+
+ONNX export of [`{{ source_model_id }}`](https://huggingface.co/{{ source_model_id }}) for
+[OpenSTEF](https://github.com/OpenSTEF/openstef), produced by
+[`foundation-model-checkpoints`](https://github.com/OpenSTEF/foundation-model-checkpoints).
+
+OpenSTEF resolves these via `HubCheckpoint`; the metadata sidecar next to each weights file drives
+the generic inference path. Each variant was gated by an accuracy-deviation check against the torch
+reference on representative inputs before publishing.
+
+## Variants
+
+| File | Precision | Static shapes | Max deviation vs torch |
+|---|---|---|---|
+{% for v in variants -%}
+| `{{ v.filename }}` | {{ v.precision }} | {{ "yes" if v.static_shapes else "no" }} | {{ "%.4g"|format(v.max_abs) }} |
+{% endfor %}
+
+Pick by deployment target: **static fp32** is the portable, CoreML-eligible default; **int8** for size;
+**dynamic** when context/horizon must vary.
+
+## Provenance
+
+- Source model: `{{ source_model_id }}` @ `{{ provenance.source_revision }}`
+- Exporter: `foundation-model-checkpoints` @ `{{ provenance.exporter_revision }}`
+- Tooling: {{ provenance.tooling }}
+- Exported: {{ provenance.exported_at }}

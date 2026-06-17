@@ -1,0 +1,106 @@
+{
+  "description": "Sidecar metadata describing a checkpoint, written next to its weights.",
+  "properties": {
+    "schema_version": {
+      "default": 2,
+      "description": "Metadata layout version.",
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "model_family": {
+      "description": "Model family identifier, e.g. 'chronos2'.",
+      "title": "Model Family",
+      "type": "string"
+    },
+    "input_names": {
+      "description": "Ordered model input tensor names.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Input Names",
+      "type": "array"
+    },
+    "output_name": {
+      "description": "Quantile-prediction output tensor name.",
+      "title": "Output Name",
+      "type": "string"
+    },
+    "native_quantiles": {
+      "description": "Quantile levels the model emits, ascending.",
+      "items": {
+        "type": "number"
+      },
+      "minItems": 1,
+      "title": "Native Quantiles",
+      "type": "array"
+    },
+    "context_length": {
+      "description": "Historical timesteps consumed as context.",
+      "exclusiveMinimum": 0,
+      "title": "Context Length",
+      "type": "integer"
+    },
+    "output_patch_size": {
+      "description": "Timesteps produced per output patch.",
+      "exclusiveMinimum": 0,
+      "title": "Output Patch Size",
+      "type": "integer"
+    },
+    "horizon_patches": {
+      "description": "Output patches emitted (frozen horizon).",
+      "exclusiveMinimum": 0,
+      "title": "Horizon Patches",
+      "type": "integer"
+    },
+    "resolution_minutes": {
+      "description": "Expected sampling interval, in minutes.",
+      "exclusiveMinimum": 0,
+      "title": "Resolution Minutes",
+      "type": "integer"
+    },
+    "precision": {
+      "default": "fp32",
+      "description": "Weight precision. int8 (QDQ) is fast on CPU but not CoreML; fp16/fp32 take the CoreML path.",
+      "enum": [
+        "fp32",
+        "fp16",
+        "int8"
+      ],
+      "title": "Precision",
+      "type": "string"
+    },
+    "static_shapes": {
+      "default": false,
+      "description": "Whether all graph axes are frozen (CoreML-eligible); sizes are given by context/horizon length.",
+      "title": "Static Shapes",
+      "type": "boolean"
+    },
+    "max_covariates": {
+      "anyOf": [
+        {
+          "exclusiveMinimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Frozen covariate-series count, or None if that axis is dynamic. Independent of static_shapes.",
+      "title": "Max Covariates"
+    }
+  },
+  "required": [
+    "model_family",
+    "input_names",
+    "output_name",
+    "native_quantiles",
+    "context_length",
+    "output_patch_size",
+    "horizon_patches",
+    "resolution_minutes"
+  ],
+  "title": "CheckpointMetadata",
+  "type": "object"
+}

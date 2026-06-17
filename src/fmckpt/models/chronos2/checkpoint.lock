@@ -1,0 +1,5 @@
+# Bump this file (e.g. the revision below) to trigger a re-export + republish of
+# the Chronos-2 checkpoints via .github/workflows/export-chronos2.yml.
+# This decouples "code changed" from "republish needed": a shared-code edit does not
+# re-burn the GPU export; only a deliberate bump here (or a manual dispatch) does.
+revision: 1

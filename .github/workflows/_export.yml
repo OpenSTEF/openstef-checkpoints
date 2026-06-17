@@ -1,0 +1,39 @@
+# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+# Reusable export→verify→publish for one model. Per-model caller workflows invoke
+# this on a deliberate bump (see export-<model>.yml), so a shared-code edit never
+# silently re-burns the GPU export.
+name: _export
+
+on:
+  workflow_call:
+    inputs:
+      model:
+        description: Model slug to export (e.g. chronos-2).
+        required: true
+        type: string
+      private:
+        description: Publish to a private HuggingFace repo.
+        default: true
+        type: boolean
+    secrets:
+      HF_TOKEN:
+        required: true
+
+jobs:
+  export:
+    # Exporting loads the full source model and traces it; a larger runner has the
+    # disk/RAM headroom the ~478 MB Chronos-2 export needs.
+    runs-on: ubuntu-latest-large
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --extra chronos
+      - name: Export + verify
+        run: uv run fmckpt export "${{ inputs.model }}" --out artifacts
+      - name: Publish
+        run: uv run fmckpt publish "${{ inputs.model }}" --out artifacts ${{ inputs.private && '--private' || '--public' }}

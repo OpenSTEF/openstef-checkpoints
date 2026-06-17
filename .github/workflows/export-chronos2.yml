@@ -1,0 +1,31 @@
+# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+#
+# SPDX-License-Identifier: MPL-2.0
+
+# Per-model caller: re-export Chronos-2 only on a deliberate bump of its lock file
+# (or a manual dispatch), not on every code change.
+name: export-chronos2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - src/fmckpt/models/chronos2/checkpoint.lock
+  workflow_dispatch:
+    inputs:
+      private:
+        description: Publish to a private HuggingFace repo.
+        default: true
+        type: boolean
+
+jobs:
+  export:
+    strategy:
+      matrix:
+        model: [chronos-2, chronos-2-small]
+    uses: ./.github/workflows/_export.yml
+    with:
+      model: ${{ matrix.model }}
+      private: ${{ inputs.private == null && true || inputs.private }}
+    secrets:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
