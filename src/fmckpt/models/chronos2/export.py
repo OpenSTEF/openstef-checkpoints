@@ -229,15 +229,19 @@ def _representative_inputs(plan: _Plan, *, covariate_rows: int, seed: int) -> di
     batch = 1 + covariate_rows
     rows = [synthetic_series(plan.context_length, seed=seed + r) for r in range(batch)]
     rows[0] = inject_nan_gaps(rows[0], gaps=2, gap_length=max(plan.context_length // 20, 1), seed=seed)
+    context = np.stack(rows).astype(np.float32)
     future = np.zeros((batch, plan.horizon), dtype=np.float32)
     future_mask = np.zeros((batch, plan.horizon), dtype=np.float32)
     for r in range(1, batch):
         future[r] = synthetic_series(plan.horizon, seed=seed + 100 + r)
         future_mask[r] = 1.0
     return {
-        "context": np.stack(rows).astype(np.float32),
+        "context": context,
         "group_ids": np.arange(batch, dtype=np.int64),
-        "attention_mask": np.ones((batch, plan.context_length), dtype=np.float32),
+        # Missing history is masked out (0 at the NaN gaps): the NaN-aware norm still
+        # sees the gaps in its statistics, but attention ignores them, so they do not
+        # propagate NaN to the output.
+        "attention_mask": np.isfinite(context).astype(np.float32),
         "future_covariates": future,
         "future_covariates_mask": future_mask,
     }
