@@ -4,10 +4,10 @@
 
 name: ci
 
-on:
-  push:
-    branches: [main]
-  pull_request:
+# Runs on every push (any branch) and PR. Cheap to over-run for a low-traffic producer
+# repo, and it lets a branch push validate CI without touching main (where the export
+# workflow lives).
+on: [push, pull_request]
 
 jobs:
   quality:
