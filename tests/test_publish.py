@@ -57,10 +57,11 @@ def test_manifest_round_trips_through_directory(tmp_path: Path) -> None:
     assert Manifest.read(tmp_path) == manifest
 
 
-def test_card_advertises_only_published_variants_and_provenance() -> None:
-    """The card lists published variants and the provenance, but never build-only ones."""
-    card = render_card(CARD_TEMPLATE, _manifest())
+def test_card_advertises_only_published_variants_with_license_and_provenance() -> None:
+    """The card lists published variants, the upstream license, and provenance — never build-only ones."""
+    card = render_card(CARD_TEMPLATE, _manifest(), source_license="apache-2.0")
     assert "chronos-2_static.onnx" in card
     assert "chronos-2_fp16.onnx" not in card  # build-only (publish=False) is withheld
     assert "amazon/chronos-2" in card
+    assert "apache-2.0" in card  # upstream weights license
     assert "def456" in card  # exporter revision stamped

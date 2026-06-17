@@ -113,12 +113,13 @@ class Manifest(BaseModel):
         return cls.model_validate_json((directory / MANIFEST_NAME).read_text(encoding="utf-8"))
 
 
-def render_card(template_path: Path, manifest: Manifest) -> str:
+def render_card(template_path: Path, manifest: Manifest, *, source_license: str) -> str:
     """Render a model card from *template_path* and *manifest*.
 
     Args:
         template_path: Path to the model's Jinja card template.
         manifest: The export manifest providing variants and provenance.
+        source_license: License of the upstream weights (governs the published checkpoint).
 
     Returns:
         The rendered card markdown.
@@ -128,6 +129,7 @@ def render_card(template_path: Path, manifest: Manifest) -> str:
     return template.render(
         slug=manifest.slug,
         source_model_id=manifest.provenance.source_model_id,
+        source_license=source_license,
         provenance=manifest.provenance,
         variants=[
             record for record in manifest.variants if record.publish

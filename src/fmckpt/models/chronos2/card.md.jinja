@@ -1,5 +1,5 @@
 ---
-license: mpl-2.0
+license: {{ source_license }}
 library_name: onnx
 tags:
   - time-series-forecasting
@@ -35,3 +35,11 @@ Pick by deployment target: **static fp32** is the portable, CoreML-eligible defa
 - Exporter: `foundation-model-checkpoints` @ `{{ provenance.exporter_revision }}`
 - Tooling: {{ provenance.tooling }}
 - Exported: {{ provenance.exported_at }}
+
+## License & attribution
+
+These ONNX checkpoints are a derivative of [`{{ source_model_id }}`](https://huggingface.co/{{ source_model_id }})
+and are released under its license, **{{ source_license }}** — all rights and attribution for the model weights
+remain with the upstream authors. The export/verification tooling that produced them
+([`foundation-model-checkpoints`](https://github.com/OpenSTEF/foundation-model-checkpoints)) is licensed MPL-2.0;
+that tooling license does not extend to these weights.

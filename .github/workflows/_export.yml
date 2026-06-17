@@ -24,9 +24,10 @@ on:
 
 jobs:
   export:
-    # Exporting loads the full source model and traces it; a larger runner has the
-    # disk/RAM headroom the ~478 MB Chronos-2 export needs.
-    runs-on: ubuntu-latest-large
+    # Exporting loads the full source model and traces it; the ~478 MB Chronos-2
+    # export fits ubuntu-latest, but bump to a larger runner (org-configured) if a
+    # bigger model needs more disk/RAM.
+    runs-on: ubuntu-latest
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
     steps:

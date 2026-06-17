@@ -82,6 +82,11 @@ class Chronos2Model(BaseModel):
     slug: str = Field(description="Filename/identity slug, e.g. 'chronos-2'.")
     source_model_id: str = Field(description="Upstream HuggingFace model id to export, e.g. 'amazon/chronos-2'.")
     repo_id: str = Field(description="Target HuggingFace repo this model's variants publish to.")
+    source_license: str = Field(
+        default="apache-2.0",
+        description="License of the upstream weights (governs the published checkpoint, a derivative). The export "
+        "tooling is MPL-2.0, but the model card's license is the weights' license.",
+    )
     context_days: int = Field(gt=0, default=60, description="Context window in days (clamped to the model max).")
     horizon_days: int = Field(gt=0, default=7, description="Forecast horizon in days (frozen, rounded up to a patch).")
     resolution_minutes: int = Field(gt=0, default=15, description="Data resolution in minutes.")

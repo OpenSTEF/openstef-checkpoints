@@ -152,7 +152,8 @@ def publish(
         console.print("[red]Nothing to publish.[/]")
         raise typer.Exit(code=1)
 
-    (out / CARD_NAME).write_text(render_card(CARD_TEMPLATE, manifest), encoding="utf-8")
+    card = render_card(CARD_TEMPLATE, manifest, source_license=config.source_license)
+    (out / CARD_NAME).write_text(card, encoding="utf-8")
     allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
     target = repo_id or config.repo_id
     console.print(f"Publishing {len(selected)} variant(s) to [bold]{target}[/] (private={private}) ...")
