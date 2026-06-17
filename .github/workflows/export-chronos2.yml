@@ -2,8 +2,9 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-# Per-model caller: re-export Chronos-2 only on a deliberate bump of its lock file
-# (or a manual dispatch), not on every code change.
+# Build + verify + publish the Chronos-2 checkpoints. Triggered only by a deliberate
+# bump of its lock file (so a code change does not re-burn the export) or a manual
+# dispatch. Inlined for one model; extract a reusable workflow if a second model lands.
 name: export-chronos2
 
 on:
@@ -20,12 +21,20 @@ on:
 
 jobs:
   export:
+    # The ~478 MB Chronos-2 export fits ubuntu-latest; bump to a larger runner
+    # (org-configured) if a bigger model needs more disk/RAM.
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         model: [chronos-2, chronos-2-small]
-    uses: ./.github/workflows/_export.yml
-    with:
-      model: ${{ matrix.model }}
-      private: ${{ inputs.private == null && true || inputs.private }}
-    secrets:
+    env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --extra chronos
+      - name: Export + verify
+        run: uv run fmckpt export "${{ matrix.model }}" --out artifacts
+      - name: Publish
+        # push (no inputs) defaults to private; dispatch honours the toggle.
+        run: uv run fmckpt publish "${{ matrix.model }}" --out artifacts ${{ (inputs.private == null || inputs.private) && '--private' || '--public' }}
