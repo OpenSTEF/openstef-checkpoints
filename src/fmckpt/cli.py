@@ -18,8 +18,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from fmckpt.models.chronos2.config import CARD_TEMPLATE, MODELS, Chronos2Model
-from fmckpt.publish import ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
+from fmckpt.models.chronos2.config import CARD_TEMPLATE, MODELS, Chronos2Model, Variant
+from fmckpt.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
 
 app = typer.Typer(help="Export, verify, and publish foundation-model ONNX checkpoints.", no_args_is_help=True)
 console = Console()
@@ -46,6 +46,25 @@ def _model(slug: str) -> Chronos2Model:
     return MODELS[slug]
 
 
+def _select_variants(names: list[str] | None) -> list[Variant]:
+    """Resolve variant names (e.g. ``fp32-static``) to the matrix, or all if none given.
+
+    Returns:
+        The selected variants.
+
+    Raises:
+        Exit: If any name is not in the model's matrix.
+    """
+    by_name = {variant.name: variant for variant in Chronos2Model.DEFAULT_VARIANTS}
+    if not names:
+        return list(Chronos2Model.DEFAULT_VARIANTS)
+    unknown = [name for name in names if name not in by_name]
+    if unknown:
+        console.print(f"[red]Unknown variant(s)[/]: {', '.join(unknown)}. Known: {', '.join(by_name)}")
+        raise typer.Exit(code=1)
+    return [by_name[name] for name in names]
+
+
 @app.command("list")
 def list_variants() -> None:
     """List the published models and their variant matrix."""
@@ -68,16 +87,19 @@ def list_variants() -> None:
 def export(
     model: Annotated[str, typer.Argument(help="Model slug, e.g. 'chronos-2'.")],
     out: Annotated[Path, typer.Option(help="Output directory for weights, sidecars and manifest.")] = Path("artifacts"),
+    variant: Annotated[
+        list[str] | None, typer.Option(help="Variant(s) to build, e.g. fp32-static. Default: all.")
+    ] = None,
     atol: Annotated[float, typer.Option(help="Absolute deviation tolerance.")] = 5e-2,
     rtol: Annotated[float, typer.Option(help="Relative deviation tolerance.")] = 1e-3,
 ) -> None:
-    """Export a model's variant matrix and verify each against the torch reference."""
+    """Export the selected variants and verify each against the torch reference."""
     # Lazy import: needs the [chronos] extra; keeps the CLI importable without torch.
     from fmckpt.models.chronos2.export import export_and_verify  # noqa: PLC0415
 
     config = _model(model)
     out.mkdir(parents=True, exist_ok=True)
-    results = export_and_verify(config, out_dir=out, atol=atol, rtol=rtol)
+    results = export_and_verify(config, out_dir=out, variants=_select_variants(variant), atol=atol, rtol=rtol)
 
     records = [
         VariantRecord(
@@ -86,8 +108,9 @@ def export(
             static_shapes=checkpoint.metadata.static_shapes,
             max_abs=deviation.max_abs,
             within_tolerance=deviation.within_tolerance,
+            publish=variant_spec.publish,
         )
-        for checkpoint, deviation in results
+        for variant_spec, checkpoint, deviation in results
     ]
     provenance = ExportProvenance.capture(
         source_model_id=config.source_model_id,
@@ -114,16 +137,26 @@ def publish(
     """
     config = _model(model)
     manifest = Manifest.read(out)
-    failing = [variant.filename for variant in manifest.variants if not variant.within_tolerance]
+
+    held = [record.filename for record in manifest.variants if not record.publish]
+    if held:
+        console.print(f"[yellow]Holding back build-only variant(s)[/]: {', '.join(held)}")
+    publishable = [record for record in manifest.variants if record.publish]
+    failing = [record.filename for record in publishable if not record.within_tolerance]
     if failing and not force:
         console.print(f"[red]Refusing to publish: {len(failing)} variant(s) failed the gate[/]: {', '.join(failing)}")
         console.print("Re-run with --force to publish anyway.")
         raise typer.Exit(code=1)
+    selected = [record for record in publishable if record.within_tolerance or force]
+    if not selected:
+        console.print("[red]Nothing to publish.[/]")
+        raise typer.Exit(code=1)
 
-    (out / "README.md").write_text(render_card(CARD_TEMPLATE, manifest), encoding="utf-8")
+    (out / CARD_NAME).write_text(render_card(CARD_TEMPLATE, manifest), encoding="utf-8")
+    allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
     target = repo_id or config.repo_id
-    console.print(f"Publishing {len(manifest.variants)} variant(s) to [bold]{target}[/] (private={private}) ...")
-    url = publish_repo(target, out, private=private)
+    console.print(f"Publishing {len(selected)} variant(s) to [bold]{target}[/] (private={private}) ...")
+    url = publish_repo(target, out, allow_patterns=allow_patterns, private=private)
     console.print(f"[green]Published[/] {url}")
 
 

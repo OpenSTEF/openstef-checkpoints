@@ -19,8 +19,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel, ConfigDict, Field
 
 MANIFEST_NAME = "manifest.json"
-_CARD_NAME = "README.md"
-_UPLOAD_PATTERNS = ["*.onnx", "*.metadata.json", _CARD_NAME]
+CARD_NAME = "README.md"
 
 
 def _tool_version(package: str) -> str:
@@ -76,6 +75,12 @@ class VariantRecord(BaseModel):
     static_shapes: bool = Field(description="Whether the graph's shapes are frozen.")
     max_abs: float = Field(description="Max absolute deviation vs the torch reference.")
     within_tolerance: bool = Field(description="Whether the variant passed the deviation gate.")
+    publish: bool = Field(description="Whether this variant is intended for upload (False = build-only).")
+
+    @property
+    def sidecar(self) -> str:
+        """The variant's metadata sidecar filename."""
+        return Path(self.filename).with_suffix(".metadata.json").name
 
 
 class Manifest(BaseModel):
@@ -124,19 +129,25 @@ def render_card(template_path: Path, manifest: Manifest) -> str:
         slug=manifest.slug,
         source_model_id=manifest.provenance.source_model_id,
         provenance=manifest.provenance,
-        variants=manifest.variants,
+        variants=[
+            record for record in manifest.variants if record.publish
+        ],  # the card advertises only shipped variants
     )
 
 
-def publish_repo(repo_id: str, source_dir: Path, *, private: bool = True, token: str | None = None) -> str:
-    """Create (if needed) and upload a directory's checkpoints + card to HuggingFace.
+def publish_repo(
+    repo_id: str, source_dir: Path, *, allow_patterns: list[str], private: bool = True, token: str | None = None
+) -> str:
+    """Create (if needed) and upload an explicit allowlist of files to HuggingFace.
 
-    Uploads only the weights, sidecars and ``README.md`` — never the manifest or
-    other local files.
+    Only *allow_patterns* (the selected weights, their sidecars and the card) are
+    uploaded — never a blind ``*.onnx`` glob, so build-only variants (e.g. fp16)
+    cannot leak out of the directory.
 
     Args:
-        repo_id: Target repo, e.g. ``your-username/chronos-2-onnx``.
-        source_dir: Directory holding the ``.onnx`` files, sidecars and card.
+        repo_id: Target repo, e.g. ``egordm/chronos-2-onnx``.
+        source_dir: Directory holding the artifacts.
+        allow_patterns: Exact filenames to upload.
         private: Whether to create the repo private (default; flip public later).
         token: HuggingFace token; falls back to the cached login / ``HF_TOKEN``.
 
@@ -145,5 +156,5 @@ def publish_repo(repo_id: str, source_dir: Path, *, private: bool = True, token:
     """
     api = HfApi(token=token)
     api.create_repo(repo_id, repo_type="model", private=private, exist_ok=True)
-    api.upload_folder(repo_id=repo_id, folder_path=str(source_dir), allow_patterns=_UPLOAD_PATTERNS)
+    api.upload_folder(repo_id=repo_id, folder_path=str(source_dir), allow_patterns=allow_patterns)
     return f"https://huggingface.co/{repo_id}"

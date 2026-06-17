@@ -44,6 +44,11 @@ class Variant(BaseModel):
 
     precision: Literal["fp32", "fp16", "int8"] = Field(description="Numeric precision of the variant's weights.")
     static: bool = Field(description="Whether all graph axes are frozen (CoreML-eligible).")
+    publish: bool = Field(
+        default=True,
+        description="Whether to ship this variant. False = built and gated (for debugging) but never uploaded "
+        "regardless of the deviation verdict — used for variants known-broken but kept in the pipeline.",
+    )
 
     @property
     def suffix(self) -> str:
@@ -51,20 +56,27 @@ class Variant(BaseModel):
         precision_part = "" if self.precision == "fp32" else f"_{self.precision}"
         return f"{'_static' if self.static else ''}{precision_part}"
 
+    @property
+    def name(self) -> str:
+        """Short identifier, e.g. ``fp32-static`` / ``int8-dynamic``."""
+        return f"{self.precision}-{'static' if self.static else 'dynamic'}"
+
 
 class Chronos2Model(BaseModel):
     """A published Chronos-2 size and how to export and ship it."""
 
     model_config = ConfigDict(frozen=True)
 
-    #: The full export matrix shipped for every size, preferred-default first.
+    #: The default export matrix, preferred-default first. int8-static is dropped (int8
+    #: never reaches CoreML, and CPU/CUDA/TRT all take the dynamic graph). fp16 is built
+    #: and gated for debugging but publish=False — it is the known-broken variant, and the
+    #: deviation gate alone cannot be trusted to withhold it (it once false-passed).
     DEFAULT_VARIANTS: ClassVar[tuple[Variant, ...]] = (
-        Variant(precision="fp32", static=True),  # portable + CoreML-eligible → the zero-config default
-        Variant(precision="fp32", static=False),
-        Variant(precision="int8", static=True),
-        Variant(precision="int8", static=False),
-        Variant(precision="fp16", static=True),
-        Variant(precision="fp16", static=False),
+        Variant(precision="fp32", static=True),  # zero-config default: CoreML-eligible + portable
+        Variant(precision="fp32", static=False),  # CPU / CUDA / TensorRT; variable shapes
+        Variant(precision="int8", static=False),  # size, CPU
+        Variant(precision="fp16", static=True, publish=False),  # build-only until the FP16 bug is fixed
+        Variant(precision="fp16", static=False, publish=False),
     )
 
     slug: str = Field(description="Filename/identity slug, e.g. 'chronos-2'.")

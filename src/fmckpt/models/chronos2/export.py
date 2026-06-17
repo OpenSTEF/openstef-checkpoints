@@ -11,6 +11,7 @@ that exports the FP32 bases, derives the FP16/INT8 variants, and verifies each.
 """
 
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
@@ -144,22 +145,25 @@ def export_and_verify(
     model: Chronos2Model,
     *,
     out_dir: Path,
+    variants: Sequence[Variant] = Chronos2Model.DEFAULT_VARIANTS,
     device: torch.device | None = None,
     atol: float = 5e-2,
     rtol: float = 1e-3,
-) -> list[tuple[ExportedCheckpoint, DeviationReport]]:
-    """Export *model*'s variant matrix and verify each against the torch reference.
+) -> list[tuple[Variant, ExportedCheckpoint, DeviationReport]]:
+    """Export the selected *variants* of *model* and verify each against the torch reference.
 
     Args:
         model: The Chronos-2 size to export.
         out_dir: Directory for the ``.onnx`` files and sidecars.
+        variants: Variants to build; defaults to the full matrix. Only the FP32 bases
+            for the static-nesses actually used are exported.
         device: Torch device; defaults to CUDA when available.
         atol: Absolute tolerance for the verdict (loose; reduced precision drifts).
         rtol: Relative tolerance for the verdict.
 
     Returns:
-        One ``(checkpoint, deviation)`` per variant; the caller publishes only those
-        within tolerance.
+        One ``(variant, checkpoint, deviation)`` per variant; the caller decides what
+        to publish (``variant.publish`` and the deviation verdict).
     """
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inner = _load_model(model.source_model_id, device)
@@ -167,15 +171,18 @@ def export_and_verify(
     _register_symbolic_ops(DEFAULT_OPSET)
     wrapper = Chronos2OnnxModule(inner, num_output_patches=plan.num_patches).eval()
 
-    bases = {static: _export_base(wrapper, model, plan, static=static, out_dir=out_dir) for static in (False, True)}
-    results: list[tuple[ExportedCheckpoint, DeviationReport]] = []
-    for variant in Chronos2Model.DEFAULT_VARIANTS:
+    bases = {
+        static: _export_base(wrapper, model, plan, static=static, out_dir=out_dir)
+        for static in sorted({variant.static for variant in variants})
+    }
+    results: list[tuple[Variant, ExportedCheckpoint, DeviationReport]] = []
+    for variant in variants:
         weights = _materialise(variant, base=bases[variant.static], model=model, out_dir=out_dir)
         exported = ExportedCheckpoint(weights_path=weights, metadata=_metadata(model, variant, plan))
         exported.write_sidecar()
         deviation = _verify(inner, exported, variant, plan=plan, model=model, atol=atol, rtol=rtol)
         logger.info("%s: max_abs=%.4g within_tolerance=%s", weights.name, deviation.max_abs, deviation.within_tolerance)
-        results.append((exported, deviation))
+        results.append((variant, exported, deviation))
     return results
 
 

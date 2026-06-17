@@ -28,13 +28,23 @@ def _manifest() -> Manifest:
                 static_shapes=True,
                 max_abs=1e-5,
                 within_tolerance=True,
+                publish=True,
             ),
             VariantRecord(
-                filename="chronos-2_static_int8.onnx",
-                precision="int8",
-                static_shapes=True,
-                max_abs=0.02,
+                filename="chronos-2.onnx",
+                precision="fp32",
+                static_shapes=False,
+                max_abs=2e-5,
                 within_tolerance=True,
+                publish=True,
+            ),
+            VariantRecord(
+                filename="chronos-2_fp16.onnx",
+                precision="fp16",
+                static_shapes=False,
+                max_abs=0.3,
+                within_tolerance=False,
+                publish=False,
             ),
         ],
     )
@@ -47,10 +57,10 @@ def test_manifest_round_trips_through_directory(tmp_path: Path) -> None:
     assert Manifest.read(tmp_path) == manifest
 
 
-def test_card_renders_variants_and_provenance() -> None:
-    """The model card lists every variant and stamps the provenance."""
+def test_card_advertises_only_published_variants_and_provenance() -> None:
+    """The card lists published variants and the provenance, but never build-only ones."""
     card = render_card(CARD_TEMPLATE, _manifest())
     assert "chronos-2_static.onnx" in card
-    assert "chronos-2_static_int8.onnx" in card
+    assert "chronos-2_fp16.onnx" not in card  # build-only (publish=False) is withheld
     assert "amazon/chronos-2" in card
     assert "def456" in card  # exporter revision stamped
