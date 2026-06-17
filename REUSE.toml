@@ -4,7 +4,7 @@ version = 1
 [[annotations]]
 path = [
     "uv.lock",
-    "tests/checkpoint.golden.json",
+    "tests/unit/checkpoint.golden.json",
     "src/fmckpt/models/chronos2/card.md.jinja",
     "**/__pycache__/**",
 ]
