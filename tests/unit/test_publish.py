@@ -7,7 +7,7 @@
 from pathlib import Path
 
 from openstef_checkpoints.models.chronos2.config import Chronos2Model
-from openstef_checkpoints.publish import ExportProvenance, Manifest, VariantRecord, render_card
+from openstef_checkpoints.publish import ExportProvenance, Manifest, VariantRecord
 
 
 def _manifest() -> Manifest:
@@ -59,9 +59,20 @@ def test_manifest_round_trips_through_directory(tmp_path: Path) -> None:
 
 def test_card_advertises_only_published_variants_with_license_and_provenance() -> None:
     """The card lists published variants, the upstream license, and provenance — never build-only ones."""
-    card = render_card(Chronos2Model.CARD_TEMPLATE, _manifest(), source_license="apache-2.0")
+    card = _manifest().render_card(Chronos2Model.CARD_TEMPLATE, source_license="apache-2.0")
     assert "chronos-2_static.onnx" in card
     assert "chronos-2_fp16.onnx" not in card  # build-only (publish=False) is withheld
     assert "amazon/chronos-2" in card
     assert "apache-2.0" in card  # upstream weights license
     assert "def456" in card  # exporter revision stamped
+
+
+def test_selection_splits_held_back_failing_and_uploadable() -> None:
+    """The fixture's passing/failing/build-only mix sorts into the right buckets."""
+    manifest = _manifest()
+    assert [record.filename for record in manifest.held_back] == ["chronos-2_fp16.onnx"]
+    assert manifest.failing == []  # the only failing variant is build-only, so not publishable
+    assert {record.filename for record in manifest.selected_for_upload(force=False)} == {
+        "chronos-2_static.onnx",
+        "chronos-2.onnx",
+    }

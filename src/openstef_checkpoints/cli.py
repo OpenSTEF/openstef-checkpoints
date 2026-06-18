@@ -24,7 +24,7 @@ from rich.table import Table
 
 from openstef_checkpoints.models.chronos2.config import Chronos2Model, Variant
 from openstef_checkpoints.models.registry import MODELS
-from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
+from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo
 from openstef_checkpoints.settings import Settings
 
 app = typer.Typer(help="Export, verify, and publish foundation-model ONNX checkpoints.", no_args_is_help=True)
@@ -125,17 +125,7 @@ def export(
     exporter = Chronos2Exporter(model=config, out_dir=model_dir, atol=atol, rtol=rtol)
     results = exporter.run(variants=_select_variants(variant))
 
-    records = [
-        VariantRecord(
-            filename=result.checkpoint.weights_path.name,
-            precision=result.checkpoint.metadata.precision,
-            static_shapes=result.checkpoint.metadata.static_shapes,
-            max_abs=result.deviation.max_abs,
-            within_tolerance=result.deviation.within_tolerance,
-            publish=result.variant.publish,
-        )
-        for result in results
-    ]
+    records = [result.to_record() for result in results]
     provenance = ExportProvenance.capture(
         source_model_id=config.source_model_id,
         exporter_revision=os.environ.get("GITHUB_SHA", "unknown"),
@@ -175,21 +165,20 @@ def publish(
     model_dir = out / config.slug
     manifest = Manifest.read(model_dir)
 
-    held = [record.filename for record in manifest.variants if not record.publish]
-    if held:
-        console.print(f"[yellow]Holding back build-only variant(s)[/]: {', '.join(held)}")
-    publishable = [record for record in manifest.variants if record.publish]
-    failing = [record.filename for record in publishable if not record.within_tolerance]
-    if failing and not force:
-        console.print(f"[red]Refusing to publish: {len(failing)} variant(s) failed the check[/]: {', '.join(failing)}")
+    if manifest.held_back:
+        held = ", ".join(record.filename for record in manifest.held_back)
+        console.print(f"[yellow]Holding back build-only variant(s)[/]: {held}")
+    if manifest.failing and not force:
+        failing = ", ".join(record.filename for record in manifest.failing)
+        console.print(f"[red]Refusing to publish: {len(manifest.failing)} variant(s) failed the check[/]: {failing}")
         console.print("Re-run with --force to publish anyway.")
         raise typer.Exit(code=1)
-    selected = [record for record in publishable if record.within_tolerance or force]
+    selected = manifest.selected_for_upload(force=force)
     if not selected:
         console.print("[red]Nothing to publish.[/]")
         raise typer.Exit(code=1)
 
-    card = render_card(config.CARD_TEMPLATE, manifest, source_license=config.source_license)
+    card = manifest.render_card(config.CARD_TEMPLATE, source_license=config.source_license)
     (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
     allow_patterns = [name for record in selected for name in (record.filename, record.metadata_filename)] + [CARD_NAME]
     target = repo_id or manifest.repo_id

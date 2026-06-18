@@ -25,9 +25,10 @@ from torch import nn
 from torch.onnx import register_custom_op_symbolic, symbolic_helper
 
 from openstef_checkpoints.checkpoint import CheckpointMetadata, ExportedCheckpoint
-from openstef_checkpoints.export import export_module, quantize_int8, to_fp16
+from openstef_checkpoints.graph.transforms import export_module, quantize_int8, to_fp16
+from openstef_checkpoints.graph.verify import DeviationReport, inject_nan_gaps, run_onnx, synthetic_series
 from openstef_checkpoints.models.chronos2.config import Chronos2Model, Variant
-from openstef_checkpoints.verify import DeviationReport, compare_outputs, inject_nan_gaps, run_onnx, synthetic_series
+from openstef_checkpoints.publish import VariantRecord
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +149,21 @@ class VariantResult(BaseModel):
     variant: Variant = Field(description="The variant that was built.")
     checkpoint: ExportedCheckpoint = Field(description="The exported weights and their metadata.")
     deviation: DeviationReport = Field(description="How far the output drifted from the torch reference.")
+
+    def to_record(self) -> VariantRecord:
+        """Summarise this result as a manifest record.
+
+        Returns:
+            The serialisable manifest entry for this variant.
+        """
+        return VariantRecord(
+            filename=self.checkpoint.weights_path.name,
+            precision=self.checkpoint.metadata.precision,
+            static_shapes=self.checkpoint.metadata.static_shapes,
+            max_abs=self.deviation.max_abs,
+            within_tolerance=self.deviation.within_tolerance,
+            publish=self.variant.publish,
+        )
 
 
 class Chronos2Exporter(BaseModel):
@@ -380,4 +396,6 @@ class Chronos2Exporter(BaseModel):
                 .cpu()
                 .numpy()
             )
-        return compare_outputs(reference, run_onnx(checkpoint.weights_path, inputs), atol=self.atol, rtol=self.rtol)
+        return DeviationReport.compare(
+            reference, run_onnx(checkpoint.weights_path, inputs), atol=self.atol, rtol=self.rtol
+        )

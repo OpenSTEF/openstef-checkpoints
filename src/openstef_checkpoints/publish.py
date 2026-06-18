@@ -111,29 +111,51 @@ class Manifest(BaseModel):
         """
         return cls.model_validate_json((directory / MANIFEST_NAME).read_text(encoding="utf-8"))
 
+    @property
+    def held_back(self) -> list[VariantRecord]:
+        """Variants that were built and checked but are not intended for upload."""
+        return [record for record in self.variants if not record.publish]
 
-def render_card(template_path: Path, manifest: Manifest, *, source_license: str) -> str:
-    """Render a model card from template_path and manifest.
+    @property
+    def publishable(self) -> list[VariantRecord]:
+        """Variants intended for upload, regardless of their deviation verdict."""
+        return [record for record in self.variants if record.publish]
 
-    Args:
-        template_path: Path to the model's Jinja card template.
-        manifest: The export manifest providing variants and provenance.
-        source_license: License of the upstream weights (governs the published checkpoint).
+    @property
+    def failing(self) -> list[VariantRecord]:
+        """Publishable variants that failed the deviation check."""
+        return [record for record in self.publishable if not record.within_tolerance]
 
-    Returns:
-        The rendered card markdown.
-    """
-    env = Environment(loader=FileSystemLoader(str(template_path.parent)), autoescape=select_autoescape())
-    template = env.get_template(template_path.name)
-    return template.render(
-        slug=manifest.slug,
-        source_model_id=manifest.provenance.source_model_id,
-        source_license=source_license,
-        provenance=manifest.provenance,
-        variants=[
-            record for record in manifest.variants if record.publish
-        ],  # the card advertises only shipped variants
-    )
+    def selected_for_upload(self, *, force: bool) -> list[VariantRecord]:
+        """The publishable variants to actually upload.
+
+        Args:
+            force: Upload even the variants that failed the deviation check.
+
+        Returns:
+            Publishable variants that passed the check, plus the failing ones when `force`.
+        """
+        return [record for record in self.publishable if record.within_tolerance or force]
+
+    def render_card(self, template_path: Path, *, source_license: str) -> str:
+        """Render this manifest's model card from a Jinja template.
+
+        Args:
+            template_path: Path to the model's Jinja card template.
+            source_license: License of the upstream weights (governs the published checkpoint).
+
+        Returns:
+            The rendered card markdown, advertising only the published variants.
+        """
+        env = Environment(loader=FileSystemLoader(str(template_path.parent)), autoescape=select_autoescape())
+        template = env.get_template(template_path.name)
+        return template.render(
+            slug=self.slug,
+            source_model_id=self.provenance.source_model_id,
+            source_license=source_license,
+            provenance=self.provenance,
+            variants=self.publishable,
+        )
 
 
 def publish_repo(
