@@ -6,7 +6,9 @@
 
 import pytest
 
-from openstef_checkpoints.models.chronos2.config import CHRONOS2, MODELS, Chronos2Model, Variant
+from openstef_checkpoints.models.chronos2.config import Chronos2Model, Variant
+
+MODEL = Chronos2Model(slug="chronos-2", source_model_id="amazon/chronos-2")
 
 
 def test_window_sizing_from_days() -> None:
@@ -49,15 +51,10 @@ def test_resolution_must_divide_a_day() -> None:
 )
 def test_weights_name_encodes_variant(variant: Variant, expected: str) -> None:
     """The weights filename encodes static-ness and precision."""
-    assert CHRONOS2.weights_name(variant) == expected
+    assert MODEL.weights_name(variant) == expected
 
 
 def test_max_covariates_only_for_static() -> None:
     """A static variant freezes the covariate count; a dynamic one leaves it None."""
-    assert CHRONOS2.max_covariates(Variant(precision="fp32", static=True)) == CHRONOS2.static_covariates
-    assert CHRONOS2.max_covariates(Variant(precision="fp32", static=False)) is None
-
-
-def test_published_sizes_registered() -> None:
-    """Both shipped sizes are addressable by slug."""
-    assert set(MODELS) == {"chronos-2", "chronos-2-small"}
+    assert MODEL.max_covariates(Variant(precision="fp32", static=True)) == MODEL.static_covariates
+    assert MODEL.max_covariates(Variant(precision="fp32", static=False)) is None

@@ -18,7 +18,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from openstef_checkpoints.models.chronos2.config import CARD_TEMPLATE, MODELS, Chronos2Model, Variant
+from openstef_checkpoints.models.chronos2.config import Chronos2Model, Variant
+from openstef_checkpoints.models.registry import MODELS
 from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
 from openstef_checkpoints.settings import Settings
 
@@ -170,7 +171,7 @@ def publish(
         console.print("[red]Nothing to publish.[/]")
         raise typer.Exit(code=1)
 
-    card = render_card(CARD_TEMPLATE, manifest, source_license=config.source_license)
+    card = render_card(config.CARD_TEMPLATE, manifest, source_license=config.source_license)
     (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
     allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
     target = repo_id or manifest.repo_id

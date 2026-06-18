@@ -25,7 +25,7 @@ from torch.onnx import register_custom_op_symbolic, symbolic_helper
 
 from openstef_checkpoints.checkpoint import CheckpointMetadata, ExportedCheckpoint
 from openstef_checkpoints.export import export_module, quantize_int8, to_fp16
-from openstef_checkpoints.models.chronos2.config import DEFAULT_OPSET, FP16_KEEP_FP32_OPS, Chronos2Model, Variant
+from openstef_checkpoints.models.chronos2.config import Chronos2Model, Variant
 from openstef_checkpoints.verify import DeviationReport, compare_outputs, inject_nan_gaps, run_onnx, synthetic_series
 
 logger = logging.getLogger(__name__)
@@ -170,7 +170,7 @@ def export_and_verify(
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inner = _load_model(model.source_model_id, device)
     plan = _plan(model, inner)
-    _register_symbolic_ops(DEFAULT_OPSET)
+    _register_symbolic_ops(model.OPSET)
     wrapper = Chronos2OnnxModule(inner, num_output_patches=plan.num_patches).eval()
 
     bases = {
@@ -276,7 +276,7 @@ def _export_base(
         input_names=INPUT_NAMES,
         output_names=[OUTPUT_NAME],
         dynamic_axes=axes,
-        opset=DEFAULT_OPSET,
+        opset=model.OPSET,
         dst=dst,
     )
 
@@ -291,7 +291,7 @@ def _materialise(variant: Variant, *, base: Path, model: Chronos2Model, out_dir:
         return base
     dst = out_dir / model.weights_name(variant)
     if variant.precision == "fp16":
-        return to_fp16(base, dst, op_block_list=list(FP16_KEEP_FP32_OPS))
+        return to_fp16(base, dst, op_block_list=list(model.FP16_KEEP_FP32_OPS))
     return quantize_int8(base, dst)
 
 

@@ -6,7 +6,7 @@
 
 from pathlib import Path
 
-from openstef_checkpoints.models.chronos2.config import CARD_TEMPLATE
+from openstef_checkpoints.models.chronos2.config import Chronos2Model
 from openstef_checkpoints.publish import ExportProvenance, Manifest, VariantRecord, render_card
 
 
@@ -59,7 +59,7 @@ def test_manifest_round_trips_through_directory(tmp_path: Path) -> None:
 
 def test_card_advertises_only_published_variants_with_license_and_provenance() -> None:
     """The card lists published variants, the upstream license, and provenance — never build-only ones."""
-    card = render_card(CARD_TEMPLATE, _manifest(), source_license="apache-2.0")
+    card = render_card(Chronos2Model.CARD_TEMPLATE, _manifest(), source_license="apache-2.0")
     assert "chronos-2_static.onnx" in card
     assert "chronos-2_fp16.onnx" not in card  # build-only (publish=False) is withheld
     assert "amazon/chronos-2" in card

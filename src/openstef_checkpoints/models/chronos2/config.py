@@ -2,12 +2,15 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""Declarative configuration for the Chronos-2 export matrix.
+"""Configuration for exporting a Chronos-2 model to ONNX.
 
-Light (pydantic + constants, no torch), so the CLI can list variants and resolve
-sizing without the heavy source-model stack. Holds the published sizes and their
-HuggingFace targets, the ``{dynamic, static} x {fp32, fp16, int8}`` variant matrix,
-window sizing (expressed in days at a resolution), and the FP16 op-block-list.
+`Chronos2Model` describes one published size: where to download it, how large a
+context and horizon to build for, and which variants to produce. `Variant` is one
+point in the export matrix: a weight precision and whether the graph's shapes are
+fixed. The preconfigured sizes live in `openstef_checkpoints.models.registry`.
+
+No torch import here, so the CLI can list and size variants without the source-model
+stack.
 """
 
 from pathlib import Path
@@ -15,84 +18,90 @@ from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-#: The model card template for this family (shared across sizes).
-CARD_TEMPLATE = Path(__file__).parent / "card.md.jinja"
-
-#: ONNX opset used for export.
-DEFAULT_OPSET = 17
-
-#: Chronos-2's output patch length; the frozen horizon is a whole number of these.
-#: The exported sidecar copies the value from the loaded model, so this is only the
-#: sizing default used to derive the patch count from a horizon in days.
-DEFAULT_OUTPUT_PATCH_SIZE = 16
-
-#: Minutes per day, for converting day-sized windows to step counts.
-_MINUTES_PER_DAY = 24 * 60
-
-#: Ops kept at FP32 when converting to FP16. Chronos-2 is attention-heavy: softmax
-#: materialises attention scores that overflow FP16 above ~11, and the NaN-aware
-#: instance norm divides by a precision-sensitive per-series std. The matmul-heavy
-#: layers stay FP16 — that is where the size/speed win comes from — so the graph is
-#: *mixed* precision, not a wholesale downcast.
-FP16_KEEP_FP32_OPS: tuple[str, ...] = ("Softmax", "Asinh", "Sinh", "ReduceMean", "ReduceSum", "Div", "Sqrt", "Pow")
-
 
 class Variant(BaseModel):
-    """One point in the export matrix: a precision and whether shapes are frozen."""
+    """One export variant: a weight precision and whether the graph shapes are fixed."""
 
     model_config = ConfigDict(frozen=True)
 
-    precision: Literal["fp32", "fp16", "int8"] = Field(description="Numeric precision of the variant's weights.")
-    static: bool = Field(description="Whether all graph axes are frozen (CoreML-eligible).")
+    precision: Literal["fp32", "fp16", "int8"] = Field(description="Weight precision.")
+    static: bool = Field(description="Whether every graph axis is a fixed size (eligible for CoreML).")
     publish: bool = Field(
         default=True,
-        description="Whether to ship this variant. False = built and gated (for debugging) but never uploaded "
-        "regardless of the deviation verdict — used for variants known-broken but kept in the pipeline.",
+        description="Whether to upload this variant. False still builds and checks it, for a variant kept in "
+        "the pipeline while a known problem is worked on.",
     )
 
     @property
     def suffix(self) -> str:
-        """Filename suffix for this variant, e.g. ``_static_int8`` (fp32 adds none)."""
+        """Filename suffix for this variant, e.g. `_static_int8` (fp32 adds nothing)."""
         precision_part = "" if self.precision == "fp32" else f"_{self.precision}"
         return f"{'_static' if self.static else ''}{precision_part}"
 
     @property
     def name(self) -> str:
-        """Short identifier, e.g. ``fp32-static`` / ``int8-dynamic``."""
+        """Short identifier, e.g. `fp32-static` or `int8-dynamic`."""
         return f"{self.precision}-{'static' if self.static else 'dynamic'}"
 
 
 class Chronos2Model(BaseModel):
-    """A published Chronos-2 size and how to export and ship it."""
+    """A published Chronos-2 size and how to export it."""
 
     model_config = ConfigDict(frozen=True)
 
-    #: The default export matrix, preferred-default first. int8-static is dropped (int8
-    #: never reaches CoreML, and CPU/CUDA/TRT all take the dynamic graph). fp16 is built
-    #: and gated for debugging but publish=False — it is the known-broken variant, and the
-    #: deviation gate alone cannot be trusted to withhold it (it once false-passed).
+    #: ONNX opset used for the export.
+    OPSET: ClassVar[int] = 17
+
+    #: Chronos-2's output patch length. The horizon is built as a whole number of these;
+    #: the exported metadata copies the real value from the loaded model.
+    OUTPUT_PATCH_SIZE: ClassVar[int] = 16
+
+    #: Minutes in a day, for turning day-sized windows into step counts.
+    MINUTES_PER_DAY: ClassVar[int] = 24 * 60
+
+    #: Model-card template, shared by all sizes.
+    CARD_TEMPLATE: ClassVar[Path] = Path(__file__).parent / "card.md.jinja"
+
+    #: Ops kept at fp32 when converting to fp16. Chronos-2 is attention-heavy: softmax
+    #: scores overflow fp16, and the NaN-aware instance norm divides by a precision-sensitive
+    #: standard deviation. The matmul-heavy layers stay fp16, where the size and speed gains
+    #: are, so the graph ends up mixed precision rather than a full downcast.
+    FP16_KEEP_FP32_OPS: ClassVar[tuple[str, ...]] = (
+        "Softmax",
+        "Asinh",
+        "Sinh",
+        "ReduceMean",
+        "ReduceSum",
+        "Div",
+        "Sqrt",
+        "Pow",
+    )
+
+    #: Variants built by default, most-preferred first. int8-static is omitted: int8 never
+    #: reaches CoreML, and CPU, CUDA, and TensorRT all take the dynamic graph. fp16 is built
+    #: and checked but not shipped while its accuracy issue is open.
     DEFAULT_VARIANTS: ClassVar[tuple[Variant, ...]] = (
-        Variant(precision="fp32", static=True),  # zero-config default: CoreML-eligible + portable
-        Variant(precision="fp32", static=False),  # CPU / CUDA / TensorRT; variable shapes
-        Variant(precision="int8", static=False),  # size, CPU
-        Variant(precision="fp16", static=True, publish=False),  # build-only until the FP16 bug is fixed
+        Variant(precision="fp32", static=True),
+        Variant(precision="fp32", static=False),
+        Variant(precision="int8", static=False),
+        Variant(precision="fp16", static=True, publish=False),
         Variant(precision="fp16", static=False, publish=False),
     )
 
-    slug: str = Field(description="Filename/identity slug, e.g. 'chronos-2'.")
-    source_model_id: str = Field(description="Upstream HuggingFace model id to export, e.g. 'amazon/chronos-2'.")
+    slug: str = Field(description="Short identifier and filename stem, e.g. 'chronos-2'.")
+    source_model_id: str = Field(description="HuggingFace id of the model to download and export.")
     source_license: str = Field(
         default="apache-2.0",
-        description="License of the upstream weights (governs the published checkpoint, a derivative). The export "
-        "tooling is MPL-2.0, but the model card's license is the weights' license.",
+        description="License of the upstream weights. The published checkpoint is a derivative, so the model "
+        "card carries this license rather than the MPL-2.0 of the export tooling.",
     )
-    context_days: int = Field(gt=0, default=60, description="Context window in days (clamped to the model max).")
-    horizon_days: int = Field(gt=0, default=7, description="Forecast horizon in days (frozen, rounded up to a patch).")
+    context_days: int = Field(gt=0, default=60, description="Context window in days, clamped to the model maximum.")
+    horizon_days: int = Field(gt=0, default=7, description="Forecast horizon in days, rounded up to a whole patch.")
     resolution_minutes: int = Field(gt=0, default=15, description="Data resolution in minutes.")
     static_covariates: int = Field(
         gt=0,
         default=3,
-        description="Covariate rows baked into a static export; the frozen batch is 1 target + this many.",
+        description="Covariate rows frozen into a static export; its batch is one target plus this many.",
     )
 
     @property
@@ -100,53 +109,45 @@ class Chronos2Model(BaseModel):
         """Number of timesteps in a day at this resolution.
 
         Returns:
-            ``_MINUTES_PER_DAY // resolution_minutes``.
+            The step count.
 
         Raises:
             ValueError: If the resolution does not divide a day evenly.
         """
-        if _MINUTES_PER_DAY % self.resolution_minutes != 0:
+        if self.MINUTES_PER_DAY % self.resolution_minutes != 0:
             msg = f"resolution {self.resolution_minutes} min does not divide a day evenly"
             raise ValueError(msg)
-        return _MINUTES_PER_DAY // self.resolution_minutes
+        return self.MINUTES_PER_DAY // self.resolution_minutes
 
     @property
     def context_length(self) -> int:
-        """Requested context length in steps (``context_days x steps_per_day``)."""
+        """Requested context length in steps."""
         return self.context_days * self.steps_per_day
 
     @property
     def num_output_patches(self) -> int:
-        """Output patches needed to cover the horizon (rounded up)."""
+        """Number of output patches needed to cover the horizon, rounded up."""
         horizon_steps = self.horizon_days * self.steps_per_day
-        return -(-horizon_steps // DEFAULT_OUTPUT_PATCH_SIZE)
+        return -(-horizon_steps // self.OUTPUT_PATCH_SIZE)
 
     def weights_name(self, variant: Variant) -> str:
-        """Filename for *variant*'s weights, e.g. ``chronos-2_static_int8.onnx``.
+        """Weights filename for a variant, e.g. `chronos-2_static_int8.onnx`.
 
         Args:
-            variant: The matrix point to name.
+            variant: The variant to name.
 
         Returns:
-            The ``.onnx`` filename for this size and variant.
+            The .onnx filename.
         """
         return f"{self.slug}{variant.suffix}.onnx"
 
     def max_covariates(self, variant: Variant) -> int | None:
-        """Frozen covariate count for *variant* (the static batch minus the target), else None.
+        """Frozen covariate count for a variant, or None when that axis is dynamic.
 
         Args:
-            variant: The matrix point.
+            variant: The variant.
 
         Returns:
-            ``static_covariates`` for a static variant; ``None`` when the covariate
-            axis is dynamic.
+            `static_covariates` for a static variant, else None.
         """
         return self.static_covariates if variant.static else None
-
-
-CHRONOS2 = Chronos2Model(slug="chronos-2", source_model_id="amazon/chronos-2")
-CHRONOS2_SMALL = Chronos2Model(slug="chronos-2-small", source_model_id="amazon/chronos-2-small")
-
-#: Published Chronos-2 sizes, keyed by slug.
-MODELS: dict[str, Chronos2Model] = {model.slug: model for model in (CHRONOS2, CHRONOS2_SMALL)}
