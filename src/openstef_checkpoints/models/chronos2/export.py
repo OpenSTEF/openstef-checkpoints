@@ -4,12 +4,10 @@
 
 """The Chronos-2 side of the export: everything specific to this model.
 
-Wraps Chronos-2 so its dict-and-object interface becomes plain input and output
-tensors, supplies the operator definitions the ONNX tracer is missing, builds the
-representative inputs and the torch reference used to check each variant, and runs the
-export: the fp32 graphs first, then the fp16 and int8 variants derived from them.
-
-Needs torch and chronos, so it is imported only when an export runs.
+Wraps Chronos-2 to take and return plain tensors, supplies the ONNX operators the tracer
+lacks, builds the inputs and torch reference used to check each variant, and runs the
+export (fp32 first, then the fp16 and int8 variants derived from it). Needs torch and
+chronos, so it is imported only when an export runs.
 """
 
 import logging

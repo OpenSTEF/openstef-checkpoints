@@ -2,26 +2,21 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""Checking an exported graph against a reference, and building inputs to check it on.
+"""Check an exported graph against a reference, and build inputs to check it on.
 
-These pieces are model-agnostic: the numeric comparison (`compare_outputs`), a CPU run
-of the exported graph (`run_onnx`), and helpers that build realistic test series. What
-inputs a model needs, and how to run its reference, are model-specific and live with the
-model. Those inputs have to be representative: a dense, gap-free comparison once passed
-an fp16 graph that was in fact broken on the missing-value path. The model builds its
-inputs from the helpers here so that case is always covered.
+Model-agnostic: the numeric comparison (`compare_outputs`), a CPU run of the graph
+(`run_onnx`), and helpers that build realistic test series with missing-value gaps. A
+model assembles its own inputs from these so the comparison covers its special paths
+(missing values, covariates), where reduced precision is most likely to drift.
 """
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import numpy as np
 import onnxruntime as ort
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 _REL_EPS = 1e-9  # guards the relative-error denominator
 
@@ -73,7 +68,7 @@ def compare_outputs(
     )
 
 
-def run_onnx(onnx_path: Path, inputs: "Mapping[str, NDArray[np.generic]]") -> NDArray[np.floating]:
+def run_onnx(onnx_path: Path, inputs: Mapping[str, NDArray[np.generic]]) -> NDArray[np.floating]:
     """Run an ONNX graph on CPU and return its first output.
 
     CPU-only so the only difference from the reference is the graph's own precision.

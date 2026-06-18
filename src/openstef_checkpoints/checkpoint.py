@@ -4,15 +4,13 @@
 
 """Checkpoint metadata and the exported ONNX file it describes.
 
-`CheckpointMetadata` records what is needed to run an exported model: the input and
-output tensor names, the context length, the quantile grid, and the shapes and
-precision the graph was built for. It is written to a JSON file next to the weights
-and read back by OpenSTEF when it loads the model.
+`CheckpointMetadata` is what OpenSTEF needs to run an exported model: tensor names,
+context length, quantile grid, and the shapes and precision the graph was built for. It
+is written to a JSON file next to the weights.
 
-The same model is defined in the OpenSTEF library. The two copies are kept identical
-by hand rather than shared as code (a shared dependency would couple the two release
-cycles). A schema snapshot test, `tests/unit/test_checkpoint.py`, fails if either side
-changes the schema without the other.
+OpenSTEF defines the same model. The copies are kept in sync by hand, rather than shared
+as code that would couple the release cycles, and guarded by a schema snapshot test
+(`tests/unit/test_checkpoint.py`).
 """
 
 from pathlib import Path

@@ -13,6 +13,7 @@ separate export.
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Self
 
 from huggingface_hub import HfApi
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -42,9 +43,7 @@ class ExportProvenance(BaseModel):
     exported_at: str = Field(description="UTC timestamp of the export.")
 
     @classmethod
-    def capture(
-        cls, *, source_model_id: str, source_revision: str = "unknown", exporter_revision: str
-    ) -> "ExportProvenance":
+    def capture(cls, *, source_model_id: str, source_revision: str = "unknown", exporter_revision: str) -> Self:
         """Capture provenance from the environment at export time.
 
         Args:
@@ -104,7 +103,7 @@ class Manifest(BaseModel):
         return path
 
     @classmethod
-    def read(cls, directory: Path) -> "Manifest":
+    def read(cls, directory: Path) -> Self:
         """Read the manifest from `<directory>/manifest.json`.
 
         Returns:
