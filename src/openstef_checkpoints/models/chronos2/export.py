@@ -181,7 +181,7 @@ def export_and_verify(
     for variant in variants:
         weights = _materialise(variant, base=bases[variant.static], model=model, out_dir=out_dir)
         exported = ExportedCheckpoint(weights_path=weights, metadata=_metadata(model, variant, plan))
-        exported.write_sidecar()
+        exported.write_metadata()
         deviation = _verify(inner, exported, variant, plan=plan, model=model, atol=atol, rtol=rtol)
         logger.info("%s: max_abs=%.4g within_tolerance=%s", weights.name, deviation.max_abs, deviation.within_tolerance)
         results.append((variant, exported, deviation))
