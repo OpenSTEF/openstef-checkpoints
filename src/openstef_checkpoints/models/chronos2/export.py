@@ -2,12 +2,14 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""Chronos-2 export (needs torch + chronos): the model-specific half of the pipeline.
+"""The Chronos-2 side of the export: everything specific to this model.
 
-The torch wrapper flattening Chronos-2's dict/object interface to positional tensors,
-the symbolic decompositions the TorchScript exporter needs, the representative inputs
-and torch reference that feed the (generic) deviation gate, and the orchestration
-that exports the FP32 bases, derives the FP16/INT8 variants, and verifies each.
+Wraps Chronos-2 so its dict-and-object interface becomes plain input and output
+tensors, supplies the operator definitions the ONNX tracer is missing, builds the
+representative inputs and the torch reference used to check each variant, and runs the
+export: the fp32 graphs first, then the fp16 and int8 variants derived from them.
+
+Needs torch and chronos, so it is imported only when an export runs.
 """
 
 import logging
@@ -30,26 +32,26 @@ from openstef_checkpoints.verify import DeviationReport, compare_outputs, inject
 
 logger = logging.getLogger(__name__)
 
-#: ONNX IO names, in lock-step with `Chronos2OnnxModule.forward` and the sidecar.
+#: ONNX input/output names, matching `Chronos2OnnxModule.forward` and the metadata file.
 INPUT_NAMES = ["context", "group_ids", "attention_mask", "future_covariates", "future_covariates_mask"]
 OUTPUT_NAME = "quantile_preds"
 _ONNX_FLOAT = 1  # TensorProto.FLOAT
 
 
 class Chronos2OnnxModule(nn.Module):
-    """Flatten Chronos-2's dict-in/object-out interface to positional tensors → tensor.
+    """Wrap Chronos-2 so it takes plain tensors in and returns one tensor out.
 
-    Covariates are extra series rows sharing a ``group_id`` with their target: a
-    covariate carries its history in ``context`` and its known future in
-    ``future_covariates`` (mask 1); a target masks its future out (mask 0). The model
-    normalises context internally (NaN-aware instance norm), so the graph owns scaling.
+    A covariate is an extra series row sharing a `group_id` with its target: it carries
+    its history in `context` and its known future in `future_covariates`, with its mask
+    set to 1, while a target's future is masked out with 0. The model normalises the
+    context itself, with a NaN-aware instance norm, so the graph handles scaling.
     """
 
     def __init__(self, model: nn.Module, num_output_patches: int) -> None:
-        """Wrap *model* with a fixed output-patch count.
+        """Wrap model with a fixed output-patch count.
 
         Args:
-            model: The inner Chronos-2 model (``pipeline.model``).
+            model: The inner Chronos-2 model (`pipeline.model`).
             num_output_patches: Output patches to emit (the frozen horizon).
         """
         super().__init__()
@@ -68,10 +70,10 @@ class Chronos2OnnxModule(nn.Module):
         """Run the model and return only its quantile predictions.
 
         Args:
-            context: Per-series history ``(batch, context_length)``.
+            context: Per-series history `(batch, context_length)`.
             group_ids: Group id per row (covariates share their target's id).
             attention_mask: Validity mask over the context.
-            future_covariates: Known-future values per row ``(batch, horizon)``.
+            future_covariates: Known-future values per row `(batch, horizon)`.
             future_covariates_mask: Which future values are known (1) vs ignored (0).
 
         Returns:
@@ -152,20 +154,20 @@ def export_and_verify(
     atol: float = 5e-2,
     rtol: float = 1e-3,
 ) -> list[tuple[Variant, ExportedCheckpoint, DeviationReport]]:
-    """Export the selected *variants* of *model* and verify each against the torch reference.
+    """Export the selected variants of model and verify each against the torch reference.
 
     Args:
         model: The Chronos-2 size to export.
-        out_dir: Directory for the ``.onnx`` files and sidecars.
-        variants: Variants to build; defaults to the full matrix. Only the FP32 bases
-            for the static-nesses actually used are exported.
+        out_dir: Directory for the `.onnx` files and their metadata files.
+        variants: Variants to build; defaults to the full matrix. Only the fp32 bases
+            for the static settings actually used are exported.
         device: Torch device; defaults to CUDA when available.
-        atol: Absolute tolerance for the verdict (loose; reduced precision drifts).
+        atol: Absolute tolerance for the verdict, kept loose since reduced precision drifts.
         rtol: Relative tolerance for the verdict.
 
     Returns:
-        One ``(variant, checkpoint, deviation)`` per variant; the caller decides what
-        to publish (``variant.publish`` and the deviation verdict).
+        One `(variant, checkpoint, deviation)` per variant. The caller decides what to
+        publish, from `variant.publish` and the deviation verdict.
     """
     device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
     inner = _load_model(model.source_model_id, device)
@@ -192,7 +194,7 @@ def _load_model(source_model_id: str, device: torch.device) -> nn.Module:
     """Load a Chronos-2 pipeline and return its eval-mode inner model.
 
     Returns:
-        The inner model; its ``chronos_config`` carries quantiles, patch size and max context.
+        The inner model; its `chronos_config` carries quantiles, patch size and max context.
     """
     logger.info("Loading Chronos-2 %r on %s", source_model_id, device)
     return Chronos2Pipeline.from_pretrained(source_model_id, device_map=str(device)).model.eval()
@@ -218,13 +220,13 @@ def _plan(model: Chronos2Model, inner: nn.Module) -> _Plan:
 
 
 def _representative_inputs(plan: _Plan, *, covariate_rows: int, seed: int) -> dict[str, NDArray[np.generic]]:
-    """Build a batch of ``1 target + covariate_rows`` exercising the NaN and covariate paths.
+    """Build a batch of `1 target + covariate_rows` exercising the NaN and covariate paths.
 
     The target's history carries NaN gaps; covariate rows carry a known future (mask 1)
     while the target's future is masked out (mask 0).
 
     Returns:
-        Named arrays matching :data:`INPUT_NAMES`.
+        Named arrays matching `INPUT_NAMES`.
     """
     batch = 1 + covariate_rows
     rows = [synthetic_series(plan.context_length, seed=seed + r) for r in range(batch)]
@@ -253,7 +255,7 @@ def _export_base(
     """Export the FP32 base graph for one static-ness.
 
     Returns:
-        The path to the exported base ``.onnx``.
+        The path to the exported base `.onnx`.
     """
     inputs = _representative_inputs(plan, covariate_rows=model.static_covariates if static else 1, seed=0)
     example = tuple(torch.from_numpy(np.asarray(inputs[name])) for name in INPUT_NAMES)
@@ -296,7 +298,7 @@ def _materialise(variant: Variant, *, base: Path, model: Chronos2Model, out_dir:
 
 
 def _metadata(model: Chronos2Model, variant: Variant, plan: _Plan) -> CheckpointMetadata:
-    """Build the sidecar metadata for one variant.
+    """Build the metadata for one variant.
 
     Returns:
         The metadata describing this variant's checkpoint.
@@ -326,7 +328,7 @@ def _verify(
     atol: float,
     rtol: float,
 ) -> DeviationReport:
-    """Run the deviation gate for one variant on representative inputs (matching its frozen batch).
+    """Run the deviation check for one variant on representative inputs (matching its frozen batch).
 
     Returns:
         The deviation of the variant's ONNX output from the torch reference.

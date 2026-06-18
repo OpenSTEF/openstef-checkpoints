@@ -2,11 +2,10 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""The ``openstef-checkpoints`` command line: list / export / publish.
+"""The `openstef-checkpoints` command line: list, export, publish.
 
-``list`` and ``publish`` are light (no torch); ``export`` lazily imports the Chronos
-exporter, which needs the ``[chronos]`` extra — so the CLI is usable, and ``--help``
-works, without that heavy stack installed.
+`list` and `publish` are light; `export` imports the Chronos exporter only when it
+runs, so the CLI and its `--help` work without the torch stack installed.
 """
 
 import logging
@@ -41,7 +40,7 @@ def _model(slug: str) -> Chronos2Model:
         The matching model config.
 
     Raises:
-        Exit: If *slug* is not a known model.
+        Exit: If slug is not a known model.
     """
     if slug not in MODELS:
         console.print(f"[red]Unknown model {slug!r}[/]. Known: {', '.join(MODELS)}")
@@ -50,7 +49,7 @@ def _model(slug: str) -> Chronos2Model:
 
 
 def _select_variants(names: list[str] | None) -> list[Variant]:
-    """Resolve variant names (e.g. ``fp32-static``) to the matrix, or all if none given.
+    """Resolve variant names (e.g. `fp32-static`) to the matrix, or all if none given.
 
     Returns:
         The selected variants.
@@ -146,12 +145,12 @@ def publish(
             "trusted publishing, where the repo must already exist.",
         ),
     ] = True,
-    force: Annotated[bool, typer.Option(help="Publish even if some variants failed the deviation gate.")] = False,
+    force: Annotated[bool, typer.Option(help="Publish even if some variants failed the deviation check.")] = False,
 ) -> None:
     """Render the model card and upload the exported variants to HuggingFace.
 
     Raises:
-        Exit: If some variants failed the deviation gate and ``--force`` was not given.
+        Exit: If some variants failed the deviation check and `--force` was not given.
     """
     config = _model(model)
     model_dir = out / config.slug
@@ -163,7 +162,7 @@ def publish(
     publishable = [record for record in manifest.variants if record.publish]
     failing = [record.filename for record in publishable if not record.within_tolerance]
     if failing and not force:
-        console.print(f"[red]Refusing to publish: {len(failing)} variant(s) failed the gate[/]: {', '.join(failing)}")
+        console.print(f"[red]Refusing to publish: {len(failing)} variant(s) failed the check[/]: {', '.join(failing)}")
         console.print("Re-run with --force to publish anyway.")
         raise typer.Exit(code=1)
     selected = [record for record in publishable if record.within_tolerance or force]
@@ -173,7 +172,7 @@ def publish(
 
     card = render_card(config.CARD_TEMPLATE, manifest, source_license=config.source_license)
     (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
-    allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
+    allow_patterns = [name for record in selected for name in (record.filename, record.metadata_filename)] + [CARD_NAME]
     target = repo_id or manifest.repo_id
     # Scope the OIDC trusted-publishing exchange to the repo we upload to (a no-op when an
     # HF token is present, e.g. local `hf auth`). The resource is always the target repo,
@@ -185,9 +184,9 @@ def publish(
 
 
 def _print_results(records: list[VariantRecord]) -> None:
-    """Print the export results, flagging variants that failed the deviation gate."""
+    """Print the export results, flagging variants that failed the deviation check."""
     table = Table(title="Export results")
-    for column in ("Variant file", "Precision", "Static", "Max abs dev", "Gate"):
+    for column in ("Variant file", "Precision", "Static", "Max abs dev", "Check"):
         table.add_column(column)
     for record in records:
         table.add_row(

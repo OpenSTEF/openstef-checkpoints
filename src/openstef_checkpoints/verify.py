@@ -2,14 +2,14 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""The deviation gate — the generic side.
+"""Checking an exported graph against a reference, and building inputs to check it on.
 
-Decides whether an exported (possibly reduced-precision) graph still matches its
-reference. The pieces here are model-agnostic: the numeric comparison, the raw ORT
-run of the candidate, and realistic-series primitives. *Which* inputs a model feeds
-and *how* its reference is run are model-specific and live with the model — a clean
-dense max-diff once hid the FP16 bug because it skipped the NaN/covariate path, so
-representativeness is the model's responsibility, exercised through these primitives.
+These pieces are model-agnostic: the numeric comparison (`compare_outputs`), a CPU run
+of the exported graph (`run_onnx`), and helpers that build realistic test series. What
+inputs a model needs, and how to run its reference, are model-specific and live with the
+model. Those inputs have to be representative: a dense, gap-free comparison once passed
+an fp16 graph that was in fact broken on the missing-value path. The model builds its
+inputs from the helpers here so that case is always covered.
 """
 
 from pathlib import Path
@@ -49,7 +49,7 @@ def compare_outputs(
 
     Args:
         reference: Output of the trusted reference on some inputs.
-        candidate: Output of the exported graph on the *same* inputs.
+        candidate: Output of the exported graph on the same inputs.
         atol: Absolute tolerance for the verdict.
         rtol: Relative tolerance for the verdict.
 
@@ -100,7 +100,7 @@ def synthetic_series(length: int, *, seed: int) -> NDArray[np.float32]:
         seed: Seed for reproducibility; vary it for distinct series.
 
     Returns:
-        A 1-D ``float32`` array of shape ``(length,)``.
+        A 1-D `float32` array of shape `(length,)`.
     """
     rng = np.random.default_rng(seed)
     trend = np.linspace(0.0, rng.uniform(-2.0, 2.0), length)
@@ -109,7 +109,7 @@ def synthetic_series(length: int, *, seed: int) -> NDArray[np.float32]:
 
 
 def inject_nan_gaps(series: NDArray[np.float32], *, gaps: int, gap_length: int, seed: int) -> NDArray[np.float32]:
-    """Return a copy of *series* with *gaps* runs of NaN (the NaN-aware path's input).
+    """Return a copy of series with gaps runs of NaN (the NaN-aware path's input).
 
     Args:
         series: The 1-D series to copy and punch gaps into.

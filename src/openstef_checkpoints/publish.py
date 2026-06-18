@@ -2,13 +2,12 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""Publishing: the export→publish manifest, the model card, and HuggingFace upload.
+"""The export-to-publish handoff: the manifest, the model card, and the upload.
 
-Light (no torch): `export` writes a `manifest.json` recording provenance and each
-variant's deviation; `publish` reads it to render the card and upload — so publishing
-runs anywhere, decoupled from the heavy export. With a token the repo is created on
-first publish (private; flip public later); under OIDC trusted publishing the token is
-repo-scoped and cannot create, so the repo must already exist (``create=False``).
+`export` writes `manifest.json`, recording where each checkpoint came from and how far
+it deviated from the reference. `publish` reads it to render the model card and upload
+the chosen files. Neither step imports torch, so publishing can run on its own after a
+separate export.
 """
 
 from datetime import UTC, datetime
@@ -24,7 +23,7 @@ CARD_NAME = "README.md"
 
 
 def _tool_version(package: str) -> str:
-    """Return *package*'s installed version, or ``n/a`` if it is absent."""
+    """Return package's installed version, or `n/a` if it is absent."""
     try:
         return version(package)
     except PackageNotFoundError:
@@ -38,7 +37,7 @@ class ExportProvenance(BaseModel):
 
     source_model_id: str = Field(description="Upstream HuggingFace model id that was exported.")
     source_revision: str = Field(default="unknown", description="Upstream model revision, if known.")
-    exporter_revision: str = Field(default="unknown", description="foundation-model-checkpoints commit that built it.")
+    exporter_revision: str = Field(default="unknown", description="openstef-checkpoints commit that built it.")
     tooling: str = Field(description="Versions of the export toolchain (onnx/onnxruntime/torch).")
     exported_at: str = Field(description="UTC timestamp of the export.")
 
@@ -51,7 +50,7 @@ class ExportProvenance(BaseModel):
         Args:
             source_model_id: Upstream model id being exported.
             source_revision: Upstream model revision, if resolvable.
-            exporter_revision: This repo's commit (e.g. ``$GITHUB_SHA`` in CI).
+            exporter_revision: This repo's commit (e.g. `$GITHUB_SHA` in CI).
 
         Returns:
             The captured provenance.
@@ -75,27 +74,27 @@ class VariantRecord(BaseModel):
     precision: str = Field(description="Variant precision (fp32/fp16/int8).")
     static_shapes: bool = Field(description="Whether the graph's shapes are frozen.")
     max_abs: float = Field(description="Max absolute deviation vs the torch reference.")
-    within_tolerance: bool = Field(description="Whether the variant passed the deviation gate.")
+    within_tolerance: bool = Field(description="Whether the variant passed the deviation check.")
     publish: bool = Field(description="Whether this variant is intended for upload (False = build-only).")
 
     @property
-    def sidecar(self) -> str:
-        """The variant's metadata sidecar filename."""
+    def metadata_filename(self) -> str:
+        """The variant's metadata filename."""
         return Path(self.filename).with_suffix(".metadata.json").name
 
 
 class Manifest(BaseModel):
-    """The export→publish hand-off: provenance plus a record per exported variant."""
+    """Provenance and one record per exported variant."""
 
     model_config = ConfigDict(frozen=True)
 
     slug: str = Field(description="Model slug, e.g. 'chronos-2'.")
-    repo_id: str = Field(description="Default target HuggingFace repo for this model.")
+    repo_id: str = Field(description="HuggingFace repo this model publishes to.")
     provenance: ExportProvenance = Field(description="Where the checkpoints came from.")
     variants: list[VariantRecord] = Field(description="One record per exported variant.")
 
     def write(self, directory: Path) -> Path:
-        """Write the manifest to ``<directory>/manifest.json``.
+        """Write the manifest to `<directory>/manifest.json`.
 
         Returns:
             The path written.
@@ -106,7 +105,7 @@ class Manifest(BaseModel):
 
     @classmethod
     def read(cls, directory: Path) -> "Manifest":
-        """Read the manifest from ``<directory>/manifest.json``.
+        """Read the manifest from `<directory>/manifest.json`.
 
         Returns:
             The parsed manifest.
@@ -115,7 +114,7 @@ class Manifest(BaseModel):
 
 
 def render_card(template_path: Path, manifest: Manifest, *, source_license: str) -> str:
-    """Render a model card from *template_path* and *manifest*.
+    """Render a model card from template_path and manifest.
 
     Args:
         template_path: Path to the model's Jinja card template.
@@ -147,21 +146,20 @@ def publish_repo(
     token: str | None = None,
     create: bool = True,
 ) -> str:
-    """Create (optionally) and upload an explicit allowlist of files to HuggingFace.
+    """Upload a fixed list of files to a HuggingFace repo, creating it if asked.
 
-    Only *allow_patterns* (the selected weights, their sidecars and the card) are
-    uploaded — never a blind ``*.onnx`` glob, so build-only variants (e.g. fp16)
-    cannot leak out of the directory.
+    Only the files named in `allow_patterns` are uploaded, never a wildcard, so a
+    build-only variant cannot leak out of the directory.
 
     Args:
-        repo_id: Target repo, e.g. ``OpenSTEF/chronos-2-onnx``.
-        source_dir: Directory holding the artifacts.
+        repo_id: The HuggingFace repo to publish to.
+        source_dir: Directory holding the files.
         allow_patterns: Exact filenames to upload.
-        private: Whether to create the repo private (default; flip public later).
-        token: HuggingFace token; falls back to the cached login / ``HF_TOKEN`` / the
-            OIDC trusted-publishing exchange (scoped by ``HF_OIDC_RESOURCE``).
-        create: Create the repo first. Disable for OIDC trusted publishing, whose
-            token is repo-scoped and cannot create — the repo must already exist.
+        private: Visibility when the repo is created. Can be flipped public later.
+        token: HuggingFace token. Falls back to the cached login, `HF_TOKEN`, or the
+            OIDC trusted-publishing exchange scoped by `HF_OIDC_RESOURCE`.
+        create: Whether to create the repo first. An OIDC token is scoped to an
+            existing repo and cannot create one, so disable this when publishing with it.
 
     Returns:
         The repo URL.

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""Unit tests for the generic deviation gate: comparison and series primitives."""
+"""Unit tests for the output comparison and the test-series helpers."""
 
 import numpy as np
 import pytest
