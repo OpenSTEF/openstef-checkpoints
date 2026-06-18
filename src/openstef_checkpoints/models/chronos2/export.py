@@ -13,7 +13,7 @@ chronos, so it is imported only when an export runs.
 import logging
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, override
+from typing import Any, ClassVar, override
 
 import numpy as np
 import torch
@@ -132,7 +132,7 @@ def _register_symbolic_ops(opset: int) -> None:
 
 
 class _Plan(BaseModel):
-    """Resolved sizing for an export run (clamped context, patch count, horizon)."""
+    """Resolved sizing for an export run: clamped context, patch count, and horizon."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -143,6 +143,16 @@ class _Plan(BaseModel):
     native_quantiles: list[float] = Field(min_length=1, description="Model's native quantile grid.")
 
 
+class VariantResult(BaseModel):
+    """One built variant: its spec, the exported checkpoint, and the deviation found."""
+
+    model_config = ConfigDict(frozen=True)
+
+    variant: Variant = Field(description="The variant that was built.")
+    checkpoint: ExportedCheckpoint = Field(description="The exported weights and their metadata.")
+    deviation: DeviationReport = Field(description="How far the output drifted from the torch reference.")
+
+
 def export_and_verify(
     model: Chronos2Model,
     *,
@@ -151,199 +161,222 @@ def export_and_verify(
     device: torch.device | None = None,
     atol: float = 5e-2,
     rtol: float = 1e-3,
-) -> list[tuple[Variant, ExportedCheckpoint, DeviationReport]]:
-    """Export the selected variants of model and verify each against the torch reference.
+) -> list[VariantResult]:
+    """Export the selected variants of a model and check each against the torch reference.
 
     Args:
         model: The Chronos-2 size to export.
         out_dir: Directory for the `.onnx` files and their metadata files.
-        variants: Variants to build; defaults to the full matrix. Only the fp32 bases
-            for the static settings actually used are exported.
+        variants: Variants to build; defaults to the full matrix. Each fp32 base is
+            exported once and shared by the variants derived from it.
         device: Torch device; defaults to CUDA when available.
         atol: Absolute tolerance for the verdict, kept loose since reduced precision drifts.
         rtol: Relative tolerance for the verdict.
 
     Returns:
-        One `(variant, checkpoint, deviation)` per variant. The caller decides what to
-        publish, from `variant.publish` and the deviation verdict.
+        One result per variant. The caller decides what to publish, from `variant.publish`
+        and the deviation verdict.
     """
-    device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    inner = _load_model(model.source_model_id, device)
-    plan = _plan(model, inner)
-    _register_symbolic_ops(model.OPSET)
-    wrapper = Chronos2OnnxModule(inner, num_output_patches=plan.num_patches).eval()
-
-    bases = {
-        static: _export_base(wrapper, model, plan, static=static, out_dir=out_dir)
-        for static in sorted({variant.static for variant in variants})
-    }
-    results: list[tuple[Variant, ExportedCheckpoint, DeviationReport]] = []
-    for variant in variants:
-        weights = _materialise(variant, base=bases[variant.static], model=model, out_dir=out_dir)
-        exported = ExportedCheckpoint(weights_path=weights, metadata=_metadata(model, variant, plan))
-        exported.write_metadata()
-        deviation = _verify(inner, exported, variant, plan=plan, model=model, atol=atol, rtol=rtol)
-        logger.info("%s: max_abs=%.4g within_tolerance=%s", weights.name, deviation.max_abs, deviation.within_tolerance)
-        results.append((variant, exported, deviation))
-    return results
+    return _Export(model, out_dir=out_dir, device=device, atol=atol, rtol=rtol).run(variants)
 
 
-def _load_model(source_model_id: str, device: torch.device) -> nn.Module:
-    """Load a Chronos-2 pipeline and return its eval-mode inner model.
+class _Export:
+    """The phases of one Chronos-2 export run, sharing the loaded model and its plan."""
 
-    Returns:
-        The inner model; its `chronos_config` carries quantiles, patch size and max context.
-    """
-    logger.info("Loading Chronos-2 %r on %s", source_model_id, device)
-    return Chronos2Pipeline.from_pretrained(source_model_id, device_map=str(device)).model.eval()
+    #: ONNX opset used for the export.
+    OPSET: ClassVar[int] = 17
 
-
-def _plan(model: Chronos2Model, inner: nn.Module) -> _Plan:
-    """Resolve sizing from the config and the loaded model's chronos_config.
-
-    Returns:
-        The clamped context, patch count, horizon and the model's quantile grid.
-    """
-    cfg: Any = inner.chronos_config  # chronos-specific config object; dynamically typed
-    context_length = min(model.context_length, int(cfg.context_length))
-    if model.context_length > int(cfg.context_length):
-        logger.warning("Context %d exceeds model max %d; clamping", model.context_length, int(cfg.context_length))
-    return _Plan(
-        context_length=context_length,
-        num_patches=model.num_output_patches,
-        horizon=model.num_output_patches * int(cfg.output_patch_size),
-        output_patch_size=int(cfg.output_patch_size),
-        native_quantiles=[float(q) for q in cfg.quantiles],
+    #: Ops kept at fp32 when converting to fp16. Chronos-2 is attention-heavy: softmax
+    #: scores overflow fp16, and the NaN-aware instance norm divides by a precision-sensitive
+    #: standard deviation. The matmul-heavy layers stay fp16, where the size and speed gains
+    #: are, so the graph ends up mixed precision rather than a full downcast.
+    FP16_KEEP_FP32_OPS: ClassVar[tuple[str, ...]] = (
+        "Softmax",
+        "Asinh",
+        "Sinh",
+        "ReduceMean",
+        "ReduceSum",
+        "Div",
+        "Sqrt",
+        "Pow",
     )
 
+    def __init__(
+        self, model: Chronos2Model, *, out_dir: Path, device: torch.device | None, atol: float, rtol: float
+    ) -> None:
+        """Load the model, resolve its plan, and register the symbolic ops the tracer needs."""
+        self.model = model
+        self.out_dir = out_dir
+        self.atol = atol
+        self.rtol = rtol
+        self.device = device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.inner = self._load_model()
+        self.plan = self._plan()
+        _register_symbolic_ops(self.OPSET)
+        self.wrapper = Chronos2OnnxModule(self.inner, num_output_patches=self.plan.num_patches).eval()
 
-def _representative_inputs(plan: _Plan, *, covariate_rows: int, seed: int) -> dict[str, NDArray[np.generic]]:
-    """Build a batch of `1 target + covariate_rows` exercising the NaN and covariate paths.
+    def run(self, variants: Sequence[Variant]) -> list[VariantResult]:
+        """Export and check each variant, reusing one fp32 base per static setting.
 
-    The target's history carries NaN gaps; covariate rows carry a known future (mask 1)
-    while the target's future is masked out (mask 0).
-
-    Returns:
-        Named arrays matching `INPUT_NAMES`.
-    """
-    batch = 1 + covariate_rows
-    rows = [synthetic_series(plan.context_length, seed=seed + r) for r in range(batch)]
-    rows[0] = inject_nan_gaps(rows[0], gaps=2, gap_length=max(plan.context_length // 20, 1), seed=seed)
-    context = np.stack(rows).astype(np.float32)
-    future = np.zeros((batch, plan.horizon), dtype=np.float32)
-    future_mask = np.zeros((batch, plan.horizon), dtype=np.float32)
-    for r in range(1, batch):
-        future[r] = synthetic_series(plan.horizon, seed=seed + 100 + r)
-        future_mask[r] = 1.0
-    return {
-        "context": context,
-        "group_ids": np.arange(batch, dtype=np.int64),
-        # Missing history is masked out (0 at the NaN gaps): the NaN-aware norm still
-        # sees the gaps in its statistics, but attention ignores them, so they do not
-        # propagate NaN to the output.
-        "attention_mask": np.isfinite(context).astype(np.float32),
-        "future_covariates": future,
-        "future_covariates_mask": future_mask,
-    }
-
-
-def _export_base(
-    wrapper: Chronos2OnnxModule, model: Chronos2Model, plan: _Plan, *, static: bool, out_dir: Path
-) -> Path:
-    """Export the FP32 base graph for one static-ness.
-
-    Returns:
-        The path to the exported base `.onnx`.
-    """
-    inputs = _representative_inputs(plan, covariate_rows=model.static_covariates if static else 1, seed=0)
-    example = tuple(torch.from_numpy(np.asarray(inputs[name])) for name in INPUT_NAMES)
-    axes: dict[str, dict[int, str]] = (
-        {}
-        if static
-        else {
-            "context": {0: "batch", 1: "context_length"},
-            "group_ids": {0: "batch"},
-            "attention_mask": {0: "batch", 1: "context_length"},
-            "future_covariates": {0: "batch", 1: "future_length"},
-            "future_covariates_mask": {0: "batch", 1: "future_length"},
-            OUTPUT_NAME: {0: "batch"},
-        }
-    )
-    dst = out_dir / f"{model.slug}{'_static' if static else ''}.onnx"
-    return export_module(
-        wrapper,
-        example,
-        input_names=INPUT_NAMES,
-        output_names=[OUTPUT_NAME],
-        dynamic_axes=axes,
-        opset=model.OPSET,
-        dst=dst,
-    )
-
-
-def _materialise(variant: Variant, *, base: Path, model: Chronos2Model, out_dir: Path) -> Path:
-    """Produce a variant's weights from its FP32 base (identity for fp32).
-
-    Returns:
-        The path to the variant's weights file.
-    """
-    if variant.precision == "fp32":
-        return base
-    dst = out_dir / model.weights_name(variant)
-    if variant.precision == "fp16":
-        return to_fp16(base, dst, op_block_list=list(model.FP16_KEEP_FP32_OPS))
-    return quantize_int8(base, dst)
-
-
-def _metadata(model: Chronos2Model, variant: Variant, plan: _Plan) -> CheckpointMetadata:
-    """Build the metadata for one variant.
-
-    Returns:
-        The metadata describing this variant's checkpoint.
-    """
-    return CheckpointMetadata(
-        model_family="chronos2",
-        input_names=INPUT_NAMES,
-        output_name=OUTPUT_NAME,
-        native_quantiles=plan.native_quantiles,
-        context_length=plan.context_length,
-        output_patch_size=plan.output_patch_size,
-        horizon_patches=plan.num_patches,
-        resolution_minutes=model.resolution_minutes,
-        precision=variant.precision,
-        static_shapes=variant.static,
-        max_covariates=model.max_covariates(variant),
-    )
-
-
-def _verify(
-    inner: nn.Module,
-    exported: ExportedCheckpoint,
-    variant: Variant,
-    *,
-    plan: _Plan,
-    model: Chronos2Model,
-    atol: float,
-    rtol: float,
-) -> DeviationReport:
-    """Run the deviation check for one variant on representative inputs (matching its frozen batch).
-
-    Returns:
-        The deviation of the variant's ONNX output from the torch reference.
-    """
-    inputs = _representative_inputs(plan, covariate_rows=model.static_covariates if variant.static else 1, seed=1)
-    tensors = {name: torch.from_numpy(np.asarray(inputs[name])) for name in INPUT_NAMES}
-    with torch.no_grad():
-        reference = (
-            Chronos2OnnxModule(inner, num_output_patches=plan.num_patches)
-            .eval()(
-                tensors["context"],
-                tensors["group_ids"],
-                tensors["attention_mask"],
-                tensors["future_covariates"],
-                tensors["future_covariates_mask"],
+        Returns:
+            One result per variant, in the order given.
+        """
+        bases = {static: self._export_base(static=static) for static in sorted({v.static for v in variants})}
+        results: list[VariantResult] = []
+        for variant in variants:
+            weights = self._materialise(variant, base=bases[variant.static])
+            checkpoint = ExportedCheckpoint(weights_path=weights, metadata=self._metadata(variant))
+            checkpoint.write_metadata()
+            deviation = self._verify(checkpoint, variant)
+            logger.info(
+                "%s: max_abs=%.4g within_tolerance=%s", weights.name, deviation.max_abs, deviation.within_tolerance
             )
-            .cpu()
-            .numpy()
+            results.append(VariantResult(variant=variant, checkpoint=checkpoint, deviation=deviation))
+        return results
+
+    def _load_model(self) -> nn.Module:
+        """Load the Chronos-2 pipeline and return its eval-mode inner model.
+
+        Returns:
+            The inner model; its `chronos_config` carries quantiles, patch size, and max context.
+        """
+        logger.info("Loading Chronos-2 %r on %s", self.model.source_model_id, self.device)
+        return Chronos2Pipeline.from_pretrained(self.model.source_model_id, device_map=str(self.device)).model.eval()
+
+    def _plan(self) -> _Plan:
+        """Resolve the export sizing from the config and the loaded model.
+
+        Returns:
+            The clamped context, patch count, horizon, and the model's quantile grid.
+        """
+        cfg: Any = self.inner.chronos_config
+        context_length = min(self.model.context_length, int(cfg.context_length))
+        if self.model.context_length > int(cfg.context_length):
+            logger.warning(
+                "Context %d exceeds model max %d; clamping", self.model.context_length, int(cfg.context_length)
+            )
+        return _Plan(
+            context_length=context_length,
+            num_patches=self.model.num_output_patches,
+            horizon=self.model.num_output_patches * int(cfg.output_patch_size),
+            output_patch_size=int(cfg.output_patch_size),
+            native_quantiles=[float(q) for q in cfg.quantiles],
         )
-    return compare_outputs(reference, run_onnx(exported.weights_path, inputs), atol=atol, rtol=rtol)
+
+    def _representative_inputs(self, *, covariate_rows: int, seed: int) -> dict[str, NDArray[np.generic]]:
+        """Build a batch of one target plus `covariate_rows` covariates.
+
+        The target's history carries NaN gaps; each covariate carries a known future
+        (mask 1) while the target's future is masked out (mask 0).
+
+        Returns:
+            Named arrays matching `INPUT_NAMES`.
+        """
+        batch = 1 + covariate_rows
+        rows = [synthetic_series(self.plan.context_length, seed=seed + r) for r in range(batch)]
+        rows[0] = inject_nan_gaps(rows[0], gaps=2, gap_length=max(self.plan.context_length // 20, 1), seed=seed)
+        context = np.stack(rows).astype(np.float32)
+        future = np.zeros((batch, self.plan.horizon), dtype=np.float32)
+        future_mask = np.zeros((batch, self.plan.horizon), dtype=np.float32)
+        for r in range(1, batch):
+            future[r] = synthetic_series(self.plan.horizon, seed=seed + 100 + r)
+            future_mask[r] = 1.0
+        return {
+            "context": context,
+            "group_ids": np.arange(batch, dtype=np.int64),
+            # Missing history is masked out (0 at the NaN gaps): the NaN-aware norm still
+            # sees the gaps in its statistics, but attention ignores them, so they do not
+            # propagate NaN to the output.
+            "attention_mask": np.isfinite(context).astype(np.float32),
+            "future_covariates": future,
+            "future_covariates_mask": future_mask,
+        }
+
+    def _export_base(self, *, static: bool) -> Path:
+        """Export the fp32 base graph for static or dynamic shapes.
+
+        Returns:
+            The path to the exported base `.onnx`.
+        """
+        inputs = self._representative_inputs(covariate_rows=self.model.static_covariates if static else 1, seed=0)
+        example = tuple(torch.from_numpy(np.asarray(inputs[name])) for name in INPUT_NAMES)
+        axes: dict[str, dict[int, str]] = (
+            {}
+            if static
+            else {
+                "context": {0: "batch", 1: "context_length"},
+                "group_ids": {0: "batch"},
+                "attention_mask": {0: "batch", 1: "context_length"},
+                "future_covariates": {0: "batch", 1: "future_length"},
+                "future_covariates_mask": {0: "batch", 1: "future_length"},
+                OUTPUT_NAME: {0: "batch"},
+            }
+        )
+        dst = self.out_dir / f"{self.model.slug}{'_static' if static else ''}.onnx"
+        return export_module(
+            self.wrapper,
+            example,
+            input_names=INPUT_NAMES,
+            output_names=[OUTPUT_NAME],
+            dynamic_axes=axes,
+            opset=self.OPSET,
+            dst=dst,
+        )
+
+    def _materialise(self, variant: Variant, *, base: Path) -> Path:
+        """Produce a variant's weights from its fp32 base (the base itself for fp32).
+
+        Returns:
+            The path to the variant's weights file.
+        """
+        if variant.precision == "fp32":
+            return base
+        dst = self.out_dir / self.model.weights_name(variant)
+        if variant.precision == "fp16":
+            return to_fp16(base, dst, op_block_list=list(self.FP16_KEEP_FP32_OPS))
+        return quantize_int8(base, dst)
+
+    def _metadata(self, variant: Variant) -> CheckpointMetadata:
+        """Build the metadata for one variant.
+
+        Returns:
+            The metadata describing this variant's checkpoint.
+        """
+        return CheckpointMetadata(
+            model_family="chronos2",
+            input_names=INPUT_NAMES,
+            output_name=OUTPUT_NAME,
+            native_quantiles=self.plan.native_quantiles,
+            context_length=self.plan.context_length,
+            output_patch_size=self.plan.output_patch_size,
+            horizon_patches=self.plan.num_patches,
+            resolution_minutes=self.model.resolution_minutes,
+            precision=variant.precision,
+            static_shapes=variant.static,
+            max_covariates=self.model.max_covariates(variant),
+        )
+
+    def _verify(self, checkpoint: ExportedCheckpoint, variant: Variant) -> DeviationReport:
+        """Compare the variant's ONNX output to the torch reference on representative inputs.
+
+        Returns:
+            The deviation between the two.
+        """
+        inputs = self._representative_inputs(
+            covariate_rows=self.model.static_covariates if variant.static else 1, seed=1
+        )
+        tensors = {name: torch.from_numpy(np.asarray(inputs[name])) for name in INPUT_NAMES}
+        with torch.no_grad():
+            reference = (
+                self
+                .wrapper(
+                    tensors["context"],
+                    tensors["group_ids"],
+                    tensors["attention_mask"],
+                    tensors["future_covariates"],
+                    tensors["future_covariates_mask"],
+                )
+                .cpu()
+                .numpy()
+            )
+        return compare_outputs(reference, run_onnx(checkpoint.weights_path, inputs), atol=self.atol, rtol=self.rtol)

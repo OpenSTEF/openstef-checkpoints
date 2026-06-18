@@ -109,14 +109,14 @@ def export(
 
     records = [
         VariantRecord(
-            filename=checkpoint.weights_path.name,
-            precision=checkpoint.metadata.precision,
-            static_shapes=checkpoint.metadata.static_shapes,
-            max_abs=deviation.max_abs,
-            within_tolerance=deviation.within_tolerance,
-            publish=variant_spec.publish,
+            filename=result.checkpoint.weights_path.name,
+            precision=result.checkpoint.metadata.precision,
+            static_shapes=result.checkpoint.metadata.static_shapes,
+            max_abs=result.deviation.max_abs,
+            within_tolerance=result.deviation.within_tolerance,
+            publish=result.variant.publish,
         )
-        for variant_spec, checkpoint, deviation in results
+        for result in results
     ]
     provenance = ExportProvenance.capture(
         source_model_id=config.source_model_id,

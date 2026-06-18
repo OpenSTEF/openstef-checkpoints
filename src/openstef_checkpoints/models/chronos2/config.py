@@ -49,9 +49,6 @@ class Chronos2Model(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    #: ONNX opset used for the export.
-    OPSET: ClassVar[int] = 17
-
     #: Chronos-2's output patch length. The horizon is built as a whole number of these;
     #: the exported metadata copies the real value from the loaded model.
     OUTPUT_PATCH_SIZE: ClassVar[int] = 16
@@ -61,21 +58,6 @@ class Chronos2Model(BaseModel):
 
     #: Model-card template, shared by all sizes.
     CARD_TEMPLATE: ClassVar[Path] = Path(__file__).parent / "card.md.jinja"
-
-    #: Ops kept at fp32 when converting to fp16. Chronos-2 is attention-heavy: softmax
-    #: scores overflow fp16, and the NaN-aware instance norm divides by a precision-sensitive
-    #: standard deviation. The matmul-heavy layers stay fp16, where the size and speed gains
-    #: are, so the graph ends up mixed precision rather than a full downcast.
-    FP16_KEEP_FP32_OPS: ClassVar[tuple[str, ...]] = (
-        "Softmax",
-        "Asinh",
-        "Sinh",
-        "ReduceMean",
-        "ReduceSum",
-        "Div",
-        "Sqrt",
-        "Pow",
-    )
 
     #: Variants built by default, most-preferred first. int8-static is omitted: int8 never
     #: reaches CoreML, and CPU, CUDA, and TensorRT all take the dynamic graph. fp16 is built
