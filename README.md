@@ -18,12 +18,12 @@ is [Chronos-2](https://huggingface.co/amazon/chronos-2).
 
 For each model it:
 
-- converts the upstream model to ONNX in several variants (combinations of dynamic or
-  static shapes and `fp32`, `fp16`, or `int8` precision);
-- writes a metadata sidecar describing each variant (input/output names, context length,
-  quantiles, precision, and shape policy);
-- verifies every variant against the original model on representative inputs and records
-  the deviation, so a checkpoint that drifts beyond tolerance is never published;
+- converts the upstream model to ONNX in several variants: dynamic or static shapes,
+  in `fp32`, `fp16`, or `int8`;
+- writes a metadata file describing each variant (tensor names, context length,
+  quantiles, precision, shapes);
+- checks every variant against the original model on representative inputs, so one that
+  drifts beyond tolerance is never published;
 - uploads the selected variants and a generated model card to a per-model Hugging Face
   repository.
 
