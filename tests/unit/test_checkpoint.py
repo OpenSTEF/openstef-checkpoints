@@ -1,11 +1,11 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
 """Tests for the checkpoint contract: the golden schema and the artifact sidecar.
 
 `CheckpointMetadata` is a governed duplicate of the schema in
-`openstef-foundation-models`; the golden test fails CI on any drift instead of
+`openstef-model-checkpoints`; the golden test fails CI on any drift instead of
 silently shipping a changed sidecar. Regenerate with::
 
     python tests/test_checkpoint.py

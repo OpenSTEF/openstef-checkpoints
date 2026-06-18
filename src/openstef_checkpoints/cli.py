@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
@@ -134,6 +134,13 @@ def publish(
         str | None, typer.Option(help="Override the target repo (e.g. your personal repo for testing).")
     ] = None,
     private: Annotated[bool, typer.Option(help="Create the repo private.")] = True,
+    create_repo: Annotated[
+        bool,
+        typer.Option(
+            help="Create the repo if missing (token auth). Use --no-create-repo for OIDC "
+            "trusted publishing, where the repo must already exist.",
+        ),
+    ] = True,
     force: Annotated[bool, typer.Option(help="Publish even if some variants failed the deviation gate.")] = False,
 ) -> None:
     """Render the model card and upload the exported variants to HuggingFace.
@@ -163,8 +170,12 @@ def publish(
     (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
     allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
     target = repo_id or config.repo_id
+    # Scope the OIDC trusted-publishing exchange to the repo we upload to (a no-op when an
+    # HF token is present, e.g. local `hf auth`). The resource is always the target repo,
+    # so derive it here and keep config the single source of truth — overridable via env.
+    os.environ.setdefault("HF_OIDC_RESOURCE", target)
     console.print(f"Publishing {len(selected)} variant(s) to [bold]{target}[/] (private={private}) ...")
-    url = publish_repo(target, model_dir, allow_patterns=allow_patterns, private=private)
+    url = publish_repo(target, model_dir, allow_patterns=allow_patterns, private=private, create=create_repo)
     console.print(f"[green]Published[/] {url}")
 
 

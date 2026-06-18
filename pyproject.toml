@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
@@ -15,14 +15,10 @@ keywords = [ "chronos", "forecasting", "foundationmodels", "onnx" ]
 license = "MPL-2.0"
 requires-python = ">=3.12,<4.0"
 
-# Base install covers schema, verification of an existing ONNX graph, publishing,
-# and the CLI. Producing a checkpoint additionally needs the heavy source-model
-# stack, kept behind the [chronos] extra so lint/type/test stay light by default.
+# Base install covers schema, ONNX-graph verification, publishing, and the CLI.
+# Producing a checkpoint additionally needs the source-model stack, behind [chronos].
 dependencies = [
-  # Low floor on purpose: chronos-forecasting's transformers stack caps huggingface-hub
-  # below 1.0, and the publish API (HfApi.upload_folder/create_repo) is available far below
-  # that. Pinning >=1.x makes the [chronos] extra unresolvable.
-  "huggingface-hub>=0.24",
+  "huggingface-hub>=1.19", # >=1.19 for OIDC trusted publishing
   "jinja2>=3.1",
   "numpy>=2",
   "onnx>=1.17",
@@ -32,16 +28,16 @@ dependencies = [
   "typer>=0.12",
 ]
 optional-dependencies.chronos = [
-  "chronos-forecasting>=2.2.0rc4", # the Chronos-2 line (pre-release; supports numpy>=2)
+  "chronos-forecasting>=2.2.2", # the Chronos-2 line
   "torch>=2.4",
 ]
 scripts.openstef-checkpoints = "openstef_checkpoints.cli:app"
 
 [tool.uv]
-# "explicit" allows pre-releases ONLY for packages whose specifier requests one
-# (here chronos-forecasting>=2.2.0rc4, the Chronos-2 line). Everything else stays on
-# stable releases — a blanket "allow" would also pull pre-release numpy/pydantic/etc.
-prerelease = "explicit"
+# chronos pins transformers<5, but transformers 4.x caps huggingface-hub<1.0 and so
+# blocks OIDC publishing. transformers 5 lifts the cap; the export deviation gate
+# confirms chronos 2.2.2 stays numerically correct on it, so override the pin.
+override-dependencies = [ "transformers>=5" ]
 
 [dependency-groups]
 dev = [
@@ -70,13 +66,10 @@ possibly-missing-attribute = "ignore" # large number of false positives, capture
 possibly-missing-import = "ignore"    # large number of false positives, captured by ruff(I002)
 
 [tool.licensecheck]
-# MPL-2.0 is compatible with Apache/BSD/MIT; licensecheck flags Apache as a false
-# positive (it is explicitly listed compatible by the MPL), so ignore it.
+# Apache-2.0 is MPL-compatible; licensecheck flags it as a false positive.
 ignore_licenses = [ "apache software license", "apache license 2.0" ]
-# NVIDIA CUDA runtime libraries are proprietary but freely-redistributable GPU
-# components that torch pulls transitively on Linux — not our code and not an MPL
-# compatibility concern. Acknowledged here; a new CUDA major (new -cuNN suffixes)
-# would re-surface in CI for a fresh review.
+# NVIDIA CUDA libraries: proprietary but redistributable GPU runtime that torch pulls
+# transitively on Linux. A new CUDA major (new -cuNN suffixes) re-surfaces for review.
 ignore_packages = [
   "cuda-bindings",
   "cuda-toolkit",

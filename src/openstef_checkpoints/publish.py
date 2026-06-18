@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
@@ -6,8 +6,9 @@
 
 Light (no torch): `export` writes a `manifest.json` recording provenance and each
 variant's deviation; `publish` reads it to render the card and upload — so publishing
-runs anywhere, decoupled from the heavy export. The HF repo is created private; the
-caller decides when to flip it public.
+runs anywhere, decoupled from the heavy export. With a token the repo is created on
+first publish (private; flip public later); under OIDC trusted publishing the token is
+repo-scoped and cannot create, so the repo must already exist (``create=False``).
 """
 
 from datetime import UTC, datetime
@@ -138,25 +139,35 @@ def render_card(template_path: Path, manifest: Manifest, *, source_license: str)
 
 
 def publish_repo(
-    repo_id: str, source_dir: Path, *, allow_patterns: list[str], private: bool = True, token: str | None = None
+    repo_id: str,
+    source_dir: Path,
+    *,
+    allow_patterns: list[str],
+    private: bool = True,
+    token: str | None = None,
+    create: bool = True,
 ) -> str:
-    """Create (if needed) and upload an explicit allowlist of files to HuggingFace.
+    """Create (optionally) and upload an explicit allowlist of files to HuggingFace.
 
     Only *allow_patterns* (the selected weights, their sidecars and the card) are
     uploaded — never a blind ``*.onnx`` glob, so build-only variants (e.g. fp16)
     cannot leak out of the directory.
 
     Args:
-        repo_id: Target repo, e.g. ``egordm/chronos-2-onnx``.
+        repo_id: Target repo, e.g. ``OpenSTEF/chronos-2-onnx``.
         source_dir: Directory holding the artifacts.
         allow_patterns: Exact filenames to upload.
         private: Whether to create the repo private (default; flip public later).
-        token: HuggingFace token; falls back to the cached login / ``HF_TOKEN``.
+        token: HuggingFace token; falls back to the cached login / ``HF_TOKEN`` / the
+            OIDC trusted-publishing exchange (scoped by ``HF_OIDC_RESOURCE``).
+        create: Create the repo first. Disable for OIDC trusted publishing, whose
+            token is repo-scoped and cannot create — the repo must already exist.
 
     Returns:
         The repo URL.
     """
     api = HfApi(token=token)
-    api.create_repo(repo_id, repo_type="model", private=private, exist_ok=True)
+    if create:
+        api.create_repo(repo_id, repo_type="model", private=private, exist_ok=True)
     api.upload_folder(repo_id=repo_id, folder_path=str(source_dir), allow_patterns=allow_patterns)
     return f"https://huggingface.co/{repo_id}"
