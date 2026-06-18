@@ -36,10 +36,17 @@ Pick by deployment target: **static fp32** is the portable, CoreML-eligible defa
 - Tooling: {{ provenance.tooling }}
 - Exported: {{ provenance.exported_at }}
 
-## License & attribution
+## License and attribution
 
-These ONNX checkpoints are a derivative of [`{{ source_model_id }}`](https://huggingface.co/{{ source_model_id }})
-and are released under its license, **{{ source_license }}** — all rights and attribution for the model weights
-remain with the upstream authors. The export/verification tooling that produced them
-([`openstef-checkpoints`](https://github.com/OpenSTEF/openstef-checkpoints)) is licensed MPL-2.0;
-that tooling license does not extend to these weights.
+These ONNX checkpoints are derived from
+[`{{ source_model_id }}`](https://huggingface.co/{{ source_model_id }}) and released under the same
+license, **{{ source_license }}**. Attribution and all rights to the model weights remain with the
+upstream authors; if you use the model in research, please cite their work.
+
+**Modifications.** The original weights were converted from PyTorch to ONNX and exported in several
+shape and precision variants (static or dynamic shapes; fp32, fp16, or int8). The weights were not
+retrained, fine-tuned, or otherwise altered.
+
+The tooling that produced these files
+([`openstef-checkpoints`](https://github.com/OpenSTEF/openstef-checkpoints)) is licensed MPL-2.0,
+which does not extend to the weights.
