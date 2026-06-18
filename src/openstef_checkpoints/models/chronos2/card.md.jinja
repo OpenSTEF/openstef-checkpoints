@@ -12,11 +12,11 @@ tags:
 
 ONNX export of [`{{ source_model_id }}`](https://huggingface.co/{{ source_model_id }}) for
 [OpenSTEF](https://github.com/OpenSTEF/openstef), produced by
-[`foundation-model-checkpoints`](https://github.com/OpenSTEF/foundation-model-checkpoints).
+[`openstef-checkpoints`](https://github.com/OpenSTEF/openstef-checkpoints).
 
-OpenSTEF resolves these via `HubCheckpoint`; the metadata sidecar next to each weights file drives
-the generic inference path. Each variant was gated by an accuracy-deviation check against the torch
-reference on representative inputs before publishing.
+OpenSTEF resolves these via `HubCheckpoint`; the metadata file next to each weights file drives the
+inference path. Each variant was checked against the torch reference on representative inputs before
+publishing.
 
 ## Variants
 
@@ -32,7 +32,7 @@ Pick by deployment target: **static fp32** is the portable, CoreML-eligible defa
 ## Provenance
 
 - Source model: `{{ source_model_id }}` @ `{{ provenance.source_revision }}`
-- Exporter: `foundation-model-checkpoints` @ `{{ provenance.exporter_revision }}`
+- Exporter: `openstef-checkpoints` @ `{{ provenance.exporter_revision }}`
 - Tooling: {{ provenance.tooling }}
 - Exported: {{ provenance.exported_at }}
 
@@ -41,5 +41,5 @@ Pick by deployment target: **static fp32** is the portable, CoreML-eligible defa
 These ONNX checkpoints are a derivative of [`{{ source_model_id }}`](https://huggingface.co/{{ source_model_id }})
 and are released under its license, **{{ source_license }}** — all rights and attribution for the model weights
 remain with the upstream authors. The export/verification tooling that produced them
-([`foundation-model-checkpoints`](https://github.com/OpenSTEF/foundation-model-checkpoints)) is licensed MPL-2.0;
+([`openstef-checkpoints`](https://github.com/OpenSTEF/openstef-checkpoints)) is licensed MPL-2.0;
 that tooling license does not extend to these weights.
