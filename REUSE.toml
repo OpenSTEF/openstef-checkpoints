@@ -5,7 +5,7 @@ version = 1
 path = [
     "uv.lock",
     "tests/unit/checkpoint.golden.json",
-    "src/fmckpt/models/chronos2/card.md.jinja",
+    "src/openstef_checkpoints/models/chronos2/card.md.jinja",
     "**/__pycache__/**",
 ]
 precedence = "override"

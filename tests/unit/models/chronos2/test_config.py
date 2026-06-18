@@ -6,7 +6,7 @@
 
 import pytest
 
-from fmckpt.models.chronos2.config import CHRONOS2, MODELS, Chronos2Model, Variant
+from openstef_checkpoints.models.chronos2.config import CHRONOS2, MODELS, Chronos2Model, Variant
 
 
 def test_window_sizing_from_days() -> None:

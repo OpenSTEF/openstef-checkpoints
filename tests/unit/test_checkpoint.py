@@ -14,7 +14,7 @@ silently shipping a changed sidecar. Regenerate with::
 import json
 from pathlib import Path
 
-from fmckpt.checkpoint import CheckpointMetadata, ExportedCheckpoint
+from openstef_checkpoints.checkpoint import CheckpointMetadata, ExportedCheckpoint
 
 GOLDEN_PATH = Path(__file__).parent / "checkpoint.golden.json"
 

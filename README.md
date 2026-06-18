@@ -4,7 +4,7 @@ SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfen
 SPDX-License-Identifier: MPL-2.0
 -->
 
-# foundation-model-checkpoints
+# openstef-checkpoints
 
 Export, verify, and publish the ONNX foundation-model checkpoints that
 [OpenSTEF](https://github.com/OpenSTEF/openstef) resolves at runtime.
@@ -25,13 +25,14 @@ dependency (which would form a release cycle at every schema bump).
 ## Layout
 
 ```
-src/fmckpt/            # model-agnostic machinery (export, verify, publish, schema, cli)
-src/fmckpt/models/<x>/ # per-model specifics only (the torch wrapper + variant/size config)
+src/openstef_checkpoints/            # model-agnostic machinery (export, verify, publish, schema, cli)
+src/openstef_checkpoints/models/<x>/ # per-model specifics only (the torch wrapper + variant/size config)
 ```
 
-`fmckpt/` is everything that does not know it is Chronos; `models/<x>/` is the
-irreducibly model-specific part. One package today; split into `fmckpt-core` /
-`fmckpt-cli` only if a second model forces shared reuse (rule of three).
+`openstef_checkpoints/` is everything that does not know it is Chronos; `models/<x>/`
+is the irreducibly model-specific part. One package today; split into
+`openstef-checkpoints-core` / `-cli` only if a second model forces shared reuse
+(rule of three).
 
 ## Develop
 

@@ -9,6 +9,6 @@ __pycache__/
 .pytest_cache/
 .ty_cache/
 dist/
-# Exported artifacts are published to HuggingFace, never committed.
-artifacts/
+# Exported checkpoints are published to HuggingFace, never committed.
+checkpoints/
 *.onnx

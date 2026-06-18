@@ -7,7 +7,7 @@
 import numpy as np
 import pytest
 
-from fmckpt.verify import compare_outputs, inject_nan_gaps, synthetic_series
+from openstef_checkpoints.verify import compare_outputs, inject_nan_gaps, synthetic_series
 
 
 def test_identical_outputs_are_within_tolerance() -> None:

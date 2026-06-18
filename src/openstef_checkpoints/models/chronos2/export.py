@@ -23,10 +23,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from torch import nn
 from torch.onnx import register_custom_op_symbolic, symbolic_helper
 
-from fmckpt.checkpoint import CheckpointMetadata, ExportedCheckpoint
-from fmckpt.export import export_module, quantize_int8, to_fp16
-from fmckpt.models.chronos2.config import DEFAULT_OPSET, FP16_KEEP_FP32_OPS, Chronos2Model, Variant
-from fmckpt.verify import DeviationReport, compare_outputs, inject_nan_gaps, run_onnx, synthetic_series
+from openstef_checkpoints.checkpoint import CheckpointMetadata, ExportedCheckpoint
+from openstef_checkpoints.export import export_module, quantize_int8, to_fp16
+from openstef_checkpoints.models.chronos2.config import DEFAULT_OPSET, FP16_KEEP_FP32_OPS, Chronos2Model, Variant
+from openstef_checkpoints.verify import DeviationReport, compare_outputs, inject_nan_gaps, run_onnx, synthetic_series
 
 logger = logging.getLogger(__name__)
 

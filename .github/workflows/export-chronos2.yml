@@ -2,16 +2,12 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-# Build + verify + publish the Chronos-2 checkpoints. Triggered only by a deliberate
-# bump of its lock file (so a code change does not re-burn the export) or a manual
-# dispatch. Inlined for one model; extract a reusable workflow if a second model lands.
+# Build + verify + publish the Chronos-2 checkpoints. Manual dispatch only, so an
+# export is always a deliberate act (the heavy ~478 MB build never auto-runs on a
+# code change). Inlined for one model; extract a reusable workflow if a second lands.
 name: export-chronos2
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - src/fmckpt/models/chronos2/checkpoint.lock
   workflow_dispatch:
     inputs:
       private:
@@ -34,7 +30,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen --extra chronos
       - name: Export + verify
-        run: uv run fmckpt export "${{ matrix.model }}" --out artifacts
+        run: uv run openstef-checkpoints export "${{ matrix.model }}"
       - name: Publish
-        # push (no inputs) defaults to private; dispatch honours the toggle.
-        run: uv run fmckpt publish "${{ matrix.model }}" --out artifacts ${{ (inputs.private == null || inputs.private) && '--private' || '--public' }}
+        # dispatch honours the private toggle (defaults to private).
+        run: uv run openstef-checkpoints publish "${{ matrix.model }}" ${{ inputs.private && '--private' || '--public' }}

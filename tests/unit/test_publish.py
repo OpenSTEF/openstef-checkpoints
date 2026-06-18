@@ -6,8 +6,8 @@
 
 from pathlib import Path
 
-from fmckpt.models.chronos2.config import CARD_TEMPLATE
-from fmckpt.publish import ExportProvenance, Manifest, VariantRecord, render_card
+from openstef_checkpoints.models.chronos2.config import CARD_TEMPLATE
+from openstef_checkpoints.publish import ExportProvenance, Manifest, VariantRecord, render_card
 
 
 def _manifest() -> Manifest:

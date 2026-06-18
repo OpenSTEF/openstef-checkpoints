@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""The ``fmckpt`` command line: list / export / publish.
+"""The ``openstef-checkpoints`` command line: list / export / publish.
 
 ``list`` and ``publish`` are light (no torch); ``export`` lazily imports the Chronos
 exporter, which needs the ``[chronos]`` extra — so the CLI is usable, and ``--help``
@@ -18,8 +18,8 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from fmckpt.models.chronos2.config import CARD_TEMPLATE, MODELS, Chronos2Model, Variant
-from fmckpt.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
+from openstef_checkpoints.models.chronos2.config import CARD_TEMPLATE, MODELS, Chronos2Model, Variant
+from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
 
 app = typer.Typer(help="Export, verify, and publish foundation-model ONNX checkpoints.", no_args_is_help=True)
 console = Console()
@@ -86,7 +86,9 @@ def list_variants() -> None:
 @app.command()
 def export(
     model: Annotated[str, typer.Argument(help="Model slug, e.g. 'chronos-2'.")],
-    out: Annotated[Path, typer.Option(help="Output directory for weights, sidecars and manifest.")] = Path("artifacts"),
+    out: Annotated[Path, typer.Option(help="Base output directory; each model writes to <out>/<slug>.")] = Path(
+        "checkpoints"
+    ),
     variant: Annotated[
         list[str] | None, typer.Option(help="Variant(s) to build, e.g. fp32-static. Default: all.")
     ] = None,
@@ -95,11 +97,13 @@ def export(
 ) -> None:
     """Export the selected variants and verify each against the torch reference."""
     # Lazy import: needs the [chronos] extra; keeps the CLI importable without torch.
-    from fmckpt.models.chronos2.export import export_and_verify  # noqa: PLC0415
+    from openstef_checkpoints.models.chronos2.export import export_and_verify  # noqa: PLC0415
 
     config = _model(model)
-    out.mkdir(parents=True, exist_ok=True)
-    results = export_and_verify(config, out_dir=out, variants=_select_variants(variant), atol=atol, rtol=rtol)
+    # Per-model subdirectory so exporting several models never clashes on filenames.
+    model_dir = out / config.slug
+    model_dir.mkdir(parents=True, exist_ok=True)
+    results = export_and_verify(config, out_dir=model_dir, variants=_select_variants(variant), atol=atol, rtol=rtol)
 
     records = [
         VariantRecord(
@@ -116,14 +120,16 @@ def export(
         source_model_id=config.source_model_id,
         exporter_revision=os.environ.get("GITHUB_SHA", "unknown"),
     )
-    Manifest(slug=config.slug, repo_id=config.repo_id, provenance=provenance, variants=records).write(out)
+    Manifest(slug=config.slug, repo_id=config.repo_id, provenance=provenance, variants=records).write(model_dir)
     _print_results(records)
 
 
 @app.command()
 def publish(
     model: Annotated[str, typer.Argument(help="Model slug, e.g. 'chronos-2'.")],
-    out: Annotated[Path, typer.Option(help="Directory holding the exported artifacts + manifest.")] = Path("artifacts"),
+    out: Annotated[Path, typer.Option(help="Base directory holding the exports; reads from <out>/<slug>.")] = Path(
+        "checkpoints"
+    ),
     repo_id: Annotated[
         str | None, typer.Option(help="Override the target repo (e.g. your personal repo for testing).")
     ] = None,
@@ -136,7 +142,8 @@ def publish(
         Exit: If some variants failed the deviation gate and ``--force`` was not given.
     """
     config = _model(model)
-    manifest = Manifest.read(out)
+    model_dir = out / config.slug
+    manifest = Manifest.read(model_dir)
 
     held = [record.filename for record in manifest.variants if not record.publish]
     if held:
@@ -153,11 +160,11 @@ def publish(
         raise typer.Exit(code=1)
 
     card = render_card(CARD_TEMPLATE, manifest, source_license=config.source_license)
-    (out / CARD_NAME).write_text(card, encoding="utf-8")
+    (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
     allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
     target = repo_id or config.repo_id
     console.print(f"Publishing {len(selected)} variant(s) to [bold]{target}[/] (private={private}) ...")
-    url = publish_repo(target, out, allow_patterns=allow_patterns, private=private)
+    url = publish_repo(target, model_dir, allow_patterns=allow_patterns, private=private)
     console.print(f"[green]Published[/] {url}")
 
 
