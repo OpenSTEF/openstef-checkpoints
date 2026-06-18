@@ -115,14 +115,15 @@ def export(
 ) -> None:
     """Export the selected variants and verify each against the torch reference."""
     # Lazy import: needs the [chronos] extra; keeps the CLI importable without torch.
-    from openstef_checkpoints.models.chronos2.export import export_and_verify  # noqa: PLC0415
+    from openstef_checkpoints.models.chronos2.export import Chronos2Exporter  # noqa: PLC0415
 
     cli: CliContext = ctx.obj
     config = cli.model(model)
     # Per-model subdirectory so exporting several models never clashes on filenames.
     model_dir = out / config.slug
     model_dir.mkdir(parents=True, exist_ok=True)
-    results = export_and_verify(config, out_dir=model_dir, variants=_select_variants(variant), atol=atol, rtol=rtol)
+    exporter = Chronos2Exporter(model=config, out_dir=model_dir, atol=atol, rtol=rtol)
+    results = exporter.run(variants=_select_variants(variant))
 
     records = [
         VariantRecord(
