@@ -81,7 +81,6 @@ class Chronos2Model(BaseModel):
 
     slug: str = Field(description="Filename/identity slug, e.g. 'chronos-2'.")
     source_model_id: str = Field(description="Upstream HuggingFace model id to export, e.g. 'amazon/chronos-2'.")
-    repo_id: str = Field(description="Target HuggingFace repo this model's variants publish to.")
     source_license: str = Field(
         default="apache-2.0",
         description="License of the upstream weights (governs the published checkpoint, a derivative). The export "
@@ -146,14 +145,8 @@ class Chronos2Model(BaseModel):
         return self.static_covariates if variant.static else None
 
 
-# The published sizes. repo_ids and the -small source id are placeholders pending the
-# team's HuggingFace org/account decision (design doc 0002, open questions).
-CHRONOS2 = Chronos2Model(slug="chronos-2", source_model_id="amazon/chronos-2", repo_id="OpenSTEF/chronos-2-onnx")
-CHRONOS2_SMALL = Chronos2Model(
-    slug="chronos-2-small",
-    source_model_id="amazon/chronos-2-small",  # NOTE: confirm the upstream small-model id with the team
-    repo_id="OpenSTEF/chronos-2-small-onnx",
-)
+CHRONOS2 = Chronos2Model(slug="chronos-2", source_model_id="amazon/chronos-2")
+CHRONOS2_SMALL = Chronos2Model(slug="chronos-2-small", source_model_id="amazon/chronos-2-small")
 
 #: Published Chronos-2 sizes, keyed by slug.
 MODELS: dict[str, Chronos2Model] = {model.slug: model for model in (CHRONOS2, CHRONOS2_SMALL)}

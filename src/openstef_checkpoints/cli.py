@@ -20,9 +20,11 @@ from rich.table import Table
 
 from openstef_checkpoints.models.chronos2.config import CARD_TEMPLATE, MODELS, Chronos2Model, Variant
 from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
+from openstef_checkpoints.settings import Settings
 
 app = typer.Typer(help="Export, verify, and publish foundation-model ONNX checkpoints.", no_args_is_help=True)
 console = Console()
+settings = Settings()
 
 
 @app.callback()
@@ -75,7 +77,7 @@ def list_variants() -> None:
         for variant in Chronos2Model.DEFAULT_VARIANTS:
             table.add_row(
                 model.slug,
-                model.repo_id,
+                settings.repo_id(model.slug),
                 model.weights_name(variant),
                 variant.precision,
                 "yes" if variant.static else "no",
@@ -120,7 +122,9 @@ def export(
         source_model_id=config.source_model_id,
         exporter_revision=os.environ.get("GITHUB_SHA", "unknown"),
     )
-    Manifest(slug=config.slug, repo_id=config.repo_id, provenance=provenance, variants=records).write(model_dir)
+    Manifest(slug=config.slug, repo_id=settings.repo_id(config.slug), provenance=provenance, variants=records).write(
+        model_dir
+    )
     _print_results(records)
 
 
@@ -169,7 +173,7 @@ def publish(
     card = render_card(CARD_TEMPLATE, manifest, source_license=config.source_license)
     (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
     allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
-    target = repo_id or config.repo_id
+    target = repo_id or manifest.repo_id
     # Scope the OIDC trusted-publishing exchange to the repo we upload to (a no-op when an
     # HF token is present, e.g. local `hf auth`). The resource is always the target repo,
     # so derive it here and keep config the single source of truth — overridable via env.

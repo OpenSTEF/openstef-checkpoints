@@ -14,7 +14,6 @@ def test_window_sizing_from_days() -> None:
     model = Chronos2Model(
         slug="x",
         source_model_id="amazon/x",
-        repo_id="OpenSTEF/x",
         context_days=60,
         horizon_days=7,
         resolution_minutes=15,
@@ -27,14 +26,14 @@ def test_window_sizing_from_days() -> None:
 
 def test_horizon_patches_round_up() -> None:
     """A horizon that is not a whole number of patches rounds up."""
-    model = Chronos2Model(slug="x", source_model_id="a", repo_id="r", horizon_days=1, resolution_minutes=10)
+    model = Chronos2Model(slug="x", source_model_id="a", horizon_days=1, resolution_minutes=10)
     # 1 day x 144 steps = 144; 144 / 16 = 9 exactly.
     assert model.num_output_patches == 9
 
 
 def test_resolution_must_divide_a_day() -> None:
     """A resolution that does not divide a day evenly is rejected at use."""
-    model = Chronos2Model(slug="x", source_model_id="a", repo_id="r", resolution_minutes=7)
+    model = Chronos2Model(slug="x", source_model_id="a", resolution_minutes=7)
     with pytest.raises(ValueError, match="does not divide a day"):
         _ = model.steps_per_day
 
