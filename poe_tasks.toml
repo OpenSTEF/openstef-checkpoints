@@ -42,14 +42,12 @@ switch = [
 [tool.poe.tasks.licensecheck]
 help = "Audit distributed dependency licenses (runtime + [chronos]) for MPL-2.0 compatibility"
 # Feed licensecheck the lock export scoped to what we ship (excluding the dev group):
-# deterministic, and avoids depgather needing a resolver on PATH. Strip torch's `+cpu`
-# local-version segment first: licensecheck cannot resolve a local version and errors out
-# (KeyError), though the license is identical to the plain `torch==<v>` it can look up.
+# deterministic, and avoids depgather needing a resolver on PATH.
 args = [ { name = "check", type = "boolean", help = "Exit non-zero on an incompatible license" } ]
 control.expr = "check"
 switch = [
-  { case = "True", shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && sed -i.bak 's/+cpu//g' /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt --zero --show-only-failing" },
-  { shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && sed -i.bak 's/+cpu//g' /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt" },
+  { case = "True", shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt --zero --show-only-failing" },
+  { shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt" },
 ]
 
 [tool.poe.tasks.all]
