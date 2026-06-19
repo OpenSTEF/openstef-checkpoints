@@ -141,6 +141,22 @@ class _ChronosConfig(Protocol):
     quantiles: Sequence[float]
 
 
+class _RoPEModule(Protocol):
+    """A rotary-embedding submodule, identified structurally by the buffer we must repair.
+
+    Chronos-2's RoPE computes `inv_freq` in `__init__` and registers it as a *non-persistent*
+    buffer, so it is deliberately absent from the checkpoint. `from_pretrained` rebuilds the
+    model from the checkpoint without re-running that init, leaving `inv_freq` as uninitialised
+    memory — garbage that corrupts the positional embedding and, when its bytes decode as
+    NaN/inf, poisons the whole graph. We detect such modules by these three attributes (rather
+    than the upstream class name) and recompute the buffer.
+    """
+
+    dim: int
+    base: float
+    inv_freq: torch.Tensor
+
+
 class VariantResult(BaseModel):
     """One built variant: its spec, the exported checkpoint, and the deviation found."""
 
@@ -217,7 +233,30 @@ class Chronos2Exporter(BaseModel):
         Its `chronos_config` carries the quantiles, patch size, and max context the plan reads.
         """
         logger.info("Loading Chronos-2 %r on %s", self.model.source_model_id, self._device)
-        return Chronos2Pipeline.from_pretrained(self.model.source_model_id, device_map=str(self._device)).model.eval()
+        inner = Chronos2Pipeline.from_pretrained(self.model.source_model_id, device_map=str(self._device)).model.eval()
+        self._repair_rope_buffers(inner)
+        return inner
+
+    @staticmethod
+    def _repair_rope_buffers(model: nn.Module) -> None:
+        """Recompute the RoPE `inv_freq` buffers that `from_pretrained` leaves uninitialised.
+
+        See `_RoPEModule` for why the buffer is garbage after loading. Recompute it from each
+        module's own `dim`/`base`, exactly as the upstream `__init__` does, so both the torch
+        reference and the exported graph use correct positional frequencies.
+        """
+        repaired = 0
+        with torch.no_grad():
+            for module in model.modules():
+                # Duck-typed, not isinstance: `inv_freq` is an nn.Module buffer reached through
+                # __getattr__, which runtime_checkable Protocols (getattr_static) cannot see.
+                if not all(hasattr(module, attr) for attr in ("dim", "base", "inv_freq")):
+                    continue
+                rope = cast("_RoPEModule", module)
+                exponent = torch.arange(0, rope.dim, 2, dtype=torch.int64).float() / rope.dim
+                rope.inv_freq.copy_(1.0 / (rope.base**exponent))
+                repaired += 1
+        logger.info("Repaired %d RoPE inv_freq buffer(s) left uninitialised by from_pretrained", repaired)
 
     @cached_property
     def _chronos_config(self) -> _ChronosConfig:
