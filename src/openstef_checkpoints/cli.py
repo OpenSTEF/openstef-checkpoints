@@ -153,8 +153,12 @@ def export(
 
 
 @app.command()
-def publish(
+# Keyword-only (the `*`) keeps typer's boolean flags off the positional list (FBT/PLR0917).
+# Only the raw argument count trips PLR0913, expected for a CLI command whose options are its
+# parameters; a targeted ignore here, not a file-wide carve-out.
+def publish(  # noqa: PLR0913
     ctx: typer.Context,
+    *,
     model: Annotated[str, typer.Argument(help="Model slug, e.g. 'chronos-2'.")],
     out: Annotated[Path, typer.Option(help="Base directory holding the exports; reads from <out>/<slug>.")] = Path(
         "checkpoints"
@@ -171,8 +175,18 @@ def publish(
         ),
     ] = True,
     force: Annotated[bool, typer.Option(help="Publish even if some variants failed the deviation check.")] = False,
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            help="Run every check and render the card, but stop before uploading. Prints exactly what would be "
+            "published so a manual run can be validated without touching HuggingFace.",
+        ),
+    ] = False,
 ) -> None:
     """Render the model card and upload the exported variants to HuggingFace.
+
+    With ``--dry-run`` the deviation gate, card rendering, and file selection all run and the
+    intended uploads are printed, but nothing is sent to the Hub and no OIDC exchange happens.
 
     Raises:
         Exit: If some variants failed the deviation check and `--force` was not given.
@@ -199,6 +213,12 @@ def publish(
     (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
     allow_patterns = [name for record in selected for name in (record.filename, record.metadata_filename)] + [CARD_NAME]
     target = repo_id or manifest.repo_id
+    if dry_run:
+        console.print(f"[cyan]\\[dry-run][/] would publish {len(selected)} variant(s) to [bold]{target}[/]:")
+        for name in allow_patterns:
+            console.print(f"  - {name}")
+        console.print("[cyan]\\[dry-run][/] all checks passed; no upload performed.")
+        return
     # Scope the OIDC trusted-publishing exchange to the repo we upload to (a no-op when an
     # HF token is present, e.g. local `hf auth`). The resource is always the target repo,
     # so derive it here and keep the manifest the single source of truth, overridable via env.
