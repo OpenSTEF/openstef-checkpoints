@@ -1,27 +1,23 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""The deviation gate — the generic side.
+"""Check an exported graph against a reference, and build inputs to check it on.
 
-Decides whether an exported (possibly reduced-precision) graph still matches its
-reference. The pieces here are model-agnostic: the numeric comparison, the raw ORT
-run of the candidate, and realistic-series primitives. *Which* inputs a model feeds
-and *how* its reference is run are model-specific and live with the model — a clean
-dense max-diff once hid the FP16 bug because it skipped the NaN/covariate path, so
-representativeness is the model's responsibility, exercised through these primitives.
+Model-agnostic: the numeric comparison (`DeviationReport.compare`), a CPU run of the
+graph (`run_onnx`), and helpers that build realistic test series with missing-value gaps.
+A model assembles its own inputs from these so the comparison covers its special paths
+(missing values, covariates), where reduced precision is most likely to drift.
 """
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Self
 
 import numpy as np
 import onnxruntime as ort
 from numpy.typing import NDArray
 from pydantic import BaseModel, ConfigDict, Field
-
-if TYPE_CHECKING:
-    from collections.abc import Mapping
 
 _REL_EPS = 1e-9  # guards the relative-error denominator
 
@@ -37,43 +33,44 @@ class DeviationReport(BaseModel):
     rmse: float = Field(description="Root-mean-square difference over all elements.")
     within_tolerance: bool = Field(description="Whether the candidate is within the configured (atol, rtol).")
 
+    @classmethod
+    def compare(
+        cls,
+        reference: NDArray[np.floating],
+        candidate: NDArray[np.floating],
+        *,
+        atol: float,
+        rtol: float,
+    ) -> Self:
+        """Compare a candidate's output against the reference, elementwise.
 
-def compare_outputs(
-    reference: NDArray[np.floating],
-    candidate: NDArray[np.floating],
-    *,
-    atol: float,
-    rtol: float,
-) -> DeviationReport:
-    """Compare a candidate's output against the reference, elementwise.
+        Args:
+            reference: Output of the trusted reference on some inputs.
+            candidate: Output of the exported graph on the same inputs.
+            atol: Absolute tolerance for the verdict.
+            rtol: Relative tolerance for the verdict.
 
-    Args:
-        reference: Output of the trusted reference on some inputs.
-        candidate: Output of the exported graph on the *same* inputs.
-        atol: Absolute tolerance for the verdict.
-        rtol: Relative tolerance for the verdict.
+        Returns:
+            The differences and pass/fail verdict.
 
-    Returns:
-        The differences and pass/fail verdict.
-
-    Raises:
-        ValueError: If the outputs do not share a shape.
-    """
-    if reference.shape != candidate.shape:
-        msg = f"output shape mismatch: reference={reference.shape} candidate={candidate.shape}"
-        raise ValueError(msg)
-    ref, cand = reference.astype(np.float64), candidate.astype(np.float64)
-    abs_diff = np.abs(ref - cand)
-    return DeviationReport(
-        max_abs=float(abs_diff.max()),
-        mean_abs=float(abs_diff.mean()),
-        rel_mean=float(abs_diff.mean() / (np.abs(ref).mean() + _REL_EPS)),
-        rmse=float(np.sqrt((abs_diff**2).mean())),
-        within_tolerance=bool(np.allclose(ref, cand, atol=atol, rtol=rtol)),
-    )
+        Raises:
+            ValueError: If the outputs do not share a shape.
+        """
+        if reference.shape != candidate.shape:
+            msg = f"output shape mismatch: reference={reference.shape} candidate={candidate.shape}"
+            raise ValueError(msg)
+        ref, cand = reference.astype(np.float64), candidate.astype(np.float64)
+        abs_diff = np.abs(ref - cand)
+        return cls(
+            max_abs=float(abs_diff.max()),
+            mean_abs=float(abs_diff.mean()),
+            rel_mean=float(abs_diff.mean() / (np.abs(ref).mean() + _REL_EPS)),
+            rmse=float(np.sqrt((abs_diff**2).mean())),
+            within_tolerance=bool(np.allclose(ref, cand, atol=atol, rtol=rtol)),
+        )
 
 
-def run_onnx(onnx_path: Path, inputs: "Mapping[str, NDArray[np.generic]]") -> NDArray[np.floating]:
+def run_onnx(onnx_path: Path, inputs: Mapping[str, NDArray[np.generic]]) -> NDArray[np.floating]:
     """Run an ONNX graph on CPU and return its first output.
 
     CPU-only so the only difference from the reference is the graph's own precision.
@@ -100,7 +97,7 @@ def synthetic_series(length: int, *, seed: int) -> NDArray[np.float32]:
         seed: Seed for reproducibility; vary it for distinct series.
 
     Returns:
-        A 1-D ``float32`` array of shape ``(length,)``.
+        A 1-D `float32` array of shape `(length,)`.
     """
     rng = np.random.default_rng(seed)
     trend = np.linspace(0.0, rng.uniform(-2.0, 2.0), length)
@@ -109,7 +106,7 @@ def synthetic_series(length: int, *, seed: int) -> NDArray[np.float32]:
 
 
 def inject_nan_gaps(series: NDArray[np.float32], *, gaps: int, gap_length: int, seed: int) -> NDArray[np.float32]:
-    """Return a copy of *series* with *gaps* runs of NaN (the NaN-aware path's input).
+    """Return a copy of series with gaps runs of NaN (the NaN-aware path's input).
 
     Args:
         series: The 1-D series to copy and punch gaps into.

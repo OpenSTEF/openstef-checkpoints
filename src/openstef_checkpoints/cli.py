@@ -1,12 +1,15 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""The ``openstef-checkpoints`` command line: list / export / publish.
+"""The `openstef-checkpoints` command line: list, export, publish.
 
-``list`` and ``publish`` are light (no torch); ``export`` lazily imports the Chronos
-exporter, which needs the ``[chronos]`` extra — so the CLI is usable, and ``--help``
-works, without that heavy stack installed.
+`list` and `publish` are light; `export` imports the Chronos exporter only when it
+runs, so the CLI and its `--help` work without the torch stack installed.
+
+Commands read their dependencies (settings, the model registry) from a `CliContext`
+on the Typer context, built in the callback. Tests inject their own with
+`CliRunner().invoke(app, ..., obj=CliContext(...))`.
 """
 
 import logging
@@ -15,45 +18,58 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+from pydantic import BaseModel, ConfigDict, Field
 from rich.console import Console
 from rich.table import Table
 
-from openstef_checkpoints.models.chronos2.config import CARD_TEMPLATE, MODELS, Chronos2Model, Variant
-from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo, render_card
+from openstef_checkpoints.models.chronos2.config import Chronos2Model, Variant
+from openstef_checkpoints.models.registry import MODELS
+from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo
+from openstef_checkpoints.settings import Settings
 
 app = typer.Typer(help="Export, verify, and publish foundation-model ONNX checkpoints.", no_args_is_help=True)
 console = Console()
 
 
+class CliContext(BaseModel):
+    """The dependencies a command needs: publishing settings and the model registry."""
+
+    model_config = ConfigDict(frozen=True)
+
+    settings: Settings = Field(description="Publishing settings.")
+    models: dict[str, Chronos2Model] = Field(description="Exportable models, keyed by slug.")
+
+    def model(self, slug: str) -> Chronos2Model:
+        """Resolve a model by slug, or exit listing the known slugs.
+
+        Returns:
+            The matching model.
+
+        Raises:
+            Exit: If the slug is not a known model.
+        """
+        if slug not in self.models:
+            console.print(f"[red]Unknown model {slug!r}[/]. Known: {', '.join(self.models)}")
+            raise typer.Exit(code=1)
+        return self.models[slug]
+
+
 @app.callback()
-def _configure() -> None:
-    """Configure logging for the CLI."""
+def main(ctx: typer.Context) -> None:
+    """Configure logging and provide the command dependencies."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-
-
-def _model(slug: str) -> Chronos2Model:
-    """Resolve a model config by slug, or exit with the known slugs.
-
-    Returns:
-        The matching model config.
-
-    Raises:
-        Exit: If *slug* is not a known model.
-    """
-    if slug not in MODELS:
-        console.print(f"[red]Unknown model {slug!r}[/]. Known: {', '.join(MODELS)}")
-        raise typer.Exit(code=1)
-    return MODELS[slug]
+    if ctx.obj is None:
+        ctx.obj = CliContext(settings=Settings(), models=MODELS)
 
 
 def _select_variants(names: list[str] | None) -> list[Variant]:
-    """Resolve variant names (e.g. ``fp32-static``) to the matrix, or all if none given.
+    """Resolve variant names (e.g. `fp32-static`) to the matrix, or all if none given.
 
     Returns:
         The selected variants.
 
     Raises:
-        Exit: If any name is not in the model's matrix.
+        Exit: If any name is not in the matrix.
     """
     by_name = {variant.name: variant for variant in Chronos2Model.DEFAULT_VARIANTS}
     if not names:
@@ -66,16 +82,17 @@ def _select_variants(names: list[str] | None) -> list[Variant]:
 
 
 @app.command("list")
-def list_variants() -> None:
+def list_variants(ctx: typer.Context) -> None:
     """List the published models and their variant matrix."""
+    cli: CliContext = ctx.obj
     table = Table(title="Published checkpoints")
     for column in ("Model", "Repo", "Variant file", "Precision", "Static"):
         table.add_column(column)
-    for model in MODELS.values():
+    for model in cli.models.values():
         for variant in Chronos2Model.DEFAULT_VARIANTS:
             table.add_row(
                 model.slug,
-                model.repo_id,
+                cli.settings.repo_id(model.slug),
                 model.weights_name(variant),
                 variant.precision,
                 "yes" if variant.static else "no",
@@ -85,6 +102,7 @@ def list_variants() -> None:
 
 @app.command()
 def export(
+    ctx: typer.Context,
     model: Annotated[str, typer.Argument(help="Model slug, e.g. 'chronos-2'.")],
     out: Annotated[Path, typer.Option(help="Base output directory; each model writes to <out>/<slug>.")] = Path(
         "checkpoints"
@@ -97,35 +115,29 @@ def export(
 ) -> None:
     """Export the selected variants and verify each against the torch reference."""
     # Lazy import: needs the [chronos] extra; keeps the CLI importable without torch.
-    from openstef_checkpoints.models.chronos2.export import export_and_verify  # noqa: PLC0415
+    from openstef_checkpoints.models.chronos2.export import Chronos2Exporter  # noqa: PLC0415
 
-    config = _model(model)
+    cli: CliContext = ctx.obj
+    config = cli.model(model)
     # Per-model subdirectory so exporting several models never clashes on filenames.
     model_dir = out / config.slug
     model_dir.mkdir(parents=True, exist_ok=True)
-    results = export_and_verify(config, out_dir=model_dir, variants=_select_variants(variant), atol=atol, rtol=rtol)
+    exporter = Chronos2Exporter(model=config, out_dir=model_dir, atol=atol, rtol=rtol)
+    results = exporter.run(variants=_select_variants(variant))
 
-    records = [
-        VariantRecord(
-            filename=checkpoint.weights_path.name,
-            precision=checkpoint.metadata.precision,
-            static_shapes=checkpoint.metadata.static_shapes,
-            max_abs=deviation.max_abs,
-            within_tolerance=deviation.within_tolerance,
-            publish=variant_spec.publish,
-        )
-        for variant_spec, checkpoint, deviation in results
-    ]
+    records = [result.to_record() for result in results]
     provenance = ExportProvenance.capture(
         source_model_id=config.source_model_id,
         exporter_revision=os.environ.get("GITHUB_SHA", "unknown"),
     )
-    Manifest(slug=config.slug, repo_id=config.repo_id, provenance=provenance, variants=records).write(model_dir)
+    repo_id = cli.settings.repo_id(config.slug)
+    Manifest(slug=config.slug, repo_id=repo_id, provenance=provenance, variants=records).write(model_dir)
     _print_results(records)
 
 
 @app.command()
 def publish(
+    ctx: typer.Context,
     model: Annotated[str, typer.Argument(help="Model slug, e.g. 'chronos-2'.")],
     out: Annotated[Path, typer.Option(help="Base directory holding the exports; reads from <out>/<slug>.")] = Path(
         "checkpoints"
@@ -134,44 +146,55 @@ def publish(
         str | None, typer.Option(help="Override the target repo (e.g. your personal repo for testing).")
     ] = None,
     private: Annotated[bool, typer.Option(help="Create the repo private.")] = True,
-    force: Annotated[bool, typer.Option(help="Publish even if some variants failed the deviation gate.")] = False,
+    create_repo: Annotated[
+        bool,
+        typer.Option(
+            help="Create the repo if missing (token auth). Use --no-create-repo for OIDC "
+            "trusted publishing, where the repo must already exist.",
+        ),
+    ] = True,
+    force: Annotated[bool, typer.Option(help="Publish even if some variants failed the deviation check.")] = False,
 ) -> None:
     """Render the model card and upload the exported variants to HuggingFace.
 
     Raises:
-        Exit: If some variants failed the deviation gate and ``--force`` was not given.
+        Exit: If some variants failed the deviation check and `--force` was not given.
     """
-    config = _model(model)
+    cli: CliContext = ctx.obj
+    config = cli.model(model)
     model_dir = out / config.slug
     manifest = Manifest.read(model_dir)
 
-    held = [record.filename for record in manifest.variants if not record.publish]
-    if held:
-        console.print(f"[yellow]Holding back build-only variant(s)[/]: {', '.join(held)}")
-    publishable = [record for record in manifest.variants if record.publish]
-    failing = [record.filename for record in publishable if not record.within_tolerance]
-    if failing and not force:
-        console.print(f"[red]Refusing to publish: {len(failing)} variant(s) failed the gate[/]: {', '.join(failing)}")
+    if manifest.held_back:
+        held = ", ".join(record.filename for record in manifest.held_back)
+        console.print(f"[yellow]Holding back build-only variant(s)[/]: {held}")
+    if manifest.failing and not force:
+        failing = ", ".join(record.filename for record in manifest.failing)
+        console.print(f"[red]Refusing to publish: {len(manifest.failing)} variant(s) failed the check[/]: {failing}")
         console.print("Re-run with --force to publish anyway.")
         raise typer.Exit(code=1)
-    selected = [record for record in publishable if record.within_tolerance or force]
+    selected = manifest.selected_for_upload(force=force)
     if not selected:
         console.print("[red]Nothing to publish.[/]")
         raise typer.Exit(code=1)
 
-    card = render_card(CARD_TEMPLATE, manifest, source_license=config.source_license)
+    card = manifest.render_card(config.CARD_TEMPLATE, source_license=config.source_license)
     (model_dir / CARD_NAME).write_text(card, encoding="utf-8")
-    allow_patterns = [name for record in selected for name in (record.filename, record.sidecar)] + [CARD_NAME]
-    target = repo_id or config.repo_id
+    allow_patterns = [name for record in selected for name in (record.filename, record.metadata_filename)] + [CARD_NAME]
+    target = repo_id or manifest.repo_id
+    # Scope the OIDC trusted-publishing exchange to the repo we upload to (a no-op when an
+    # HF token is present, e.g. local `hf auth`). The resource is always the target repo,
+    # so derive it here and keep the manifest the single source of truth, overridable via env.
+    os.environ.setdefault("HF_OIDC_RESOURCE", target)
     console.print(f"Publishing {len(selected)} variant(s) to [bold]{target}[/] (private={private}) ...")
-    url = publish_repo(target, model_dir, allow_patterns=allow_patterns, private=private)
+    url = publish_repo(target, model_dir, allow_patterns=allow_patterns, private=private, create=create_repo)
     console.print(f"[green]Published[/] {url}")
 
 
 def _print_results(records: list[VariantRecord]) -> None:
-    """Print the export results, flagging variants that failed the deviation gate."""
+    """Print the export results, flagging variants that failed the deviation check."""
     table = Table(title="Export results")
-    for column in ("Variant file", "Precision", "Static", "Max abs dev", "Gate"):
+    for column in ("Variant file", "Precision", "Static", "Max abs dev", "Check"):
         table.add_column(column)
     for record in records:
         table.add_row(

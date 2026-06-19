@@ -1,61 +1,64 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""The checkpoint contract and the exported artifact.
+"""Checkpoint metadata and the exported ONNX file it describes.
 
-`CheckpointMetadata` is a *governed duplicate* of the schema in
-`openstef_foundation_models.models.checkpoint`: the two repos share no code (that
-would form a release cycle at every schema bump), so the copies are kept compatible
-by an append-only rule and the golden conformance test (``tests/test_checkpoint.py``),
-which fails CI on any drift rather than silently shipping a changed sidecar.
+`CheckpointMetadata` is what OpenSTEF needs to run an exported model: tensor names,
+context length, quantile grid, and the shapes and precision the graph was built for. It
+is written to a JSON file next to the weights.
+
+OpenSTEF defines the same model. The copies are kept in sync by hand, rather than shared
+as code that would couple the release cycles, and guarded by a schema snapshot test
+(`tests/unit/test_checkpoint.py`).
 """
 
 from pathlib import Path
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-#: Schema version of the sidecar metadata; mirrors the consumer's constant.
-METADATA_SCHEMA_VERSION = 2
-
 
 class CheckpointMetadata(BaseModel):
-    """Sidecar metadata describing a checkpoint, written next to its weights."""
+    """Description of an exported checkpoint, written to a JSON file beside its weights."""
 
     model_config = ConfigDict(extra="ignore", protected_namespaces=())
 
-    schema_version: int = Field(default=METADATA_SCHEMA_VERSION, description="Metadata layout version.")
+    #: Layout version of the metadata. Bumped only on a breaking change, and matched by
+    #: the same constant in the OpenSTEF library.
+    SCHEMA_VERSION: ClassVar[int] = 2
+
+    schema_version: int = Field(default=SCHEMA_VERSION, description="Metadata layout version.")
     model_family: str = Field(description="Model family identifier, e.g. 'chronos2'.")
-    input_names: list[str] = Field(min_length=1, description="Ordered model input tensor names.")
-    output_name: str = Field(description="Quantile-prediction output tensor name.")
+    input_names: list[str] = Field(min_length=1, description="Model input tensor names, in order.")
+    output_name: str = Field(description="Name of the quantile-prediction output tensor.")
     native_quantiles: list[float] = Field(min_length=1, description="Quantile levels the model emits, ascending.")
-    context_length: int = Field(gt=0, description="Historical timesteps consumed as context.")
+    context_length: int = Field(gt=0, description="Number of historical timesteps consumed as context.")
     output_patch_size: int = Field(gt=0, description="Timesteps produced per output patch.")
-    horizon_patches: int = Field(gt=0, description="Output patches emitted (frozen horizon).")
+    horizon_patches: int = Field(gt=0, description="Number of output patches emitted.")
     resolution_minutes: int = Field(gt=0, description="Expected sampling interval, in minutes.")
     precision: Literal["fp32", "fp16", "int8"] = Field(
         default="fp32",
-        description="Weight precision. int8 (QDQ) is fast on CPU but not CoreML; fp16/fp32 take the CoreML path.",
+        description="Weight precision. int8 runs on CPU but not CoreML; fp16 and fp32 take the CoreML path.",
     )
     static_shapes: bool = Field(
         default=False,
-        description="Whether all graph axes are frozen (CoreML-eligible); sizes are given by context/horizon length.",
+        description="Whether every graph axis is a fixed size. Static graphs are eligible for CoreML.",
     )
     max_covariates: int | None = Field(
         default=None,
         gt=0,
-        description="Frozen covariate-series count, or None if that axis is dynamic. Independent of static_shapes.",
+        description="Number of covariate series the graph is fixed to, or None if that axis is dynamic.",
     )
 
     @property
     def horizon_length(self) -> int:
-        """Total forecast timesteps emitted (``output_patch_size * horizon_patches``)."""
+        """Total number of forecast timesteps emitted."""
         return self.output_patch_size * self.horizon_patches
 
 
 class ExportedCheckpoint(BaseModel):
-    """An exported ONNX weights file paired with its metadata, owning its sidecar."""
+    """An exported ONNX weights file together with its metadata."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -63,15 +66,15 @@ class ExportedCheckpoint(BaseModel):
     metadata: CheckpointMetadata = Field(description="Metadata describing this checkpoint.")
 
     @property
-    def sidecar_path(self) -> Path:
-        """Sidecar path (the weights path with a ``.metadata.json`` suffix)."""
+    def metadata_path(self) -> Path:
+        """Path of the metadata file: the weights path with a `.metadata.json` suffix."""
         return self.weights_path.with_suffix(".metadata.json")
 
-    def write_sidecar(self) -> Path:
-        """Write the metadata sidecar next to the weights file.
+    def write_metadata(self) -> Path:
+        """Write the metadata file next to the weights.
 
         Returns:
-            The path written.
+            The path of the file written.
         """
-        self.sidecar_path.write_text(self.metadata.model_dump_json(indent=2) + "\n", encoding="utf-8")
-        return self.sidecar_path
+        self.metadata_path.write_text(self.metadata.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        return self.metadata_path

@@ -1,19 +1,19 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""Unit tests for the generic deviation gate: comparison and series primitives."""
+"""Unit tests for the output comparison and the test-series helpers."""
 
 import numpy as np
 import pytest
 
-from openstef_checkpoints.verify import compare_outputs, inject_nan_gaps, synthetic_series
+from openstef_checkpoints.graph.verify import DeviationReport, inject_nan_gaps, synthetic_series
 
 
 def test_identical_outputs_are_within_tolerance() -> None:
     """An exact match reports zero deviation and passes."""
     reference = np.array([[1.0, 2.0], [3.0, 4.0]])
-    report = compare_outputs(reference, reference.copy(), atol=1e-6, rtol=1e-6)
+    report = DeviationReport.compare(reference, reference.copy(), atol=1e-6, rtol=1e-6)
     assert report.max_abs == 0.0
     assert report.within_tolerance
 
@@ -22,13 +22,13 @@ def test_verdict_tracks_tolerance() -> None:
     """The same drift passes a loose tolerance and fails a tight one."""
     reference = np.array([10.0, 20.0, 30.0])
     candidate = reference + 0.01
-    assert compare_outputs(reference, candidate, atol=0.1, rtol=0.0).within_tolerance
-    assert not compare_outputs(reference, candidate, atol=1e-4, rtol=0.0).within_tolerance
+    assert DeviationReport.compare(reference, candidate, atol=0.1, rtol=0.0).within_tolerance
+    assert not DeviationReport.compare(reference, candidate, atol=1e-4, rtol=0.0).within_tolerance
 
 
 def test_reports_metrics_on_a_known_difference() -> None:
     """Absolute, mean and RMS figures are computed over all elements."""
-    report = compare_outputs(np.zeros(4), np.array([0.0, 0.0, 0.0, 2.0]), atol=0.0, rtol=0.0)
+    report = DeviationReport.compare(np.zeros(4), np.array([0.0, 0.0, 0.0, 2.0]), atol=0.0, rtol=0.0)
     assert report.max_abs == 2.0
     assert report.mean_abs == 0.5
     assert report.rmse == pytest.approx(1.0)
@@ -38,7 +38,7 @@ def test_reports_metrics_on_a_known_difference() -> None:
 def test_shape_mismatch_raises() -> None:
     """Comparing differently-shaped outputs is a programming error, not a deviation."""
     with pytest.raises(ValueError, match="shape mismatch"):
-        compare_outputs(np.zeros((2, 3)), np.zeros((2, 4)), atol=0.0, rtol=0.0)
+        DeviationReport.compare(np.zeros((2, 3)), np.zeros((2, 4)), atol=0.0, rtol=0.0)
 
 
 def test_synthetic_series_shape_dtype_and_determinism() -> None:

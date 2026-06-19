@@ -2,4 +2,4 @@
 #
 # SPDX-License-Identifier: MPL-2.0
 
-"""Per-model export specifics. Each subpackage adds only what is irreducibly model-specific."""
+"""Model-agnostic ONNX-graph layer: produce and verify graphs, independent of any model."""

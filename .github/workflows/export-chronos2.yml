@@ -1,19 +1,16 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
-# Build + verify + publish the Chronos-2 checkpoints. Manual dispatch only, so an
+# Build, verify, and publish the Chronos-2 checkpoints. Manual dispatch only, so an
 # export is always a deliberate act (the heavy ~478 MB build never auto-runs on a
-# code change). Inlined for one model; extract a reusable workflow if a second lands.
+# code change). No HF_TOKEN secret: publish authenticates by exchanging the GitHub
+# OIDC token for a short-lived, repo-scoped HF token (trusted publisher configured on
+# each HF repo).
 name: export-chronos2
 
 on:
   workflow_dispatch:
-    inputs:
-      private:
-        description: Publish to a private HuggingFace repo.
-        default: true
-        type: boolean
 
 jobs:
   export:
@@ -23,14 +20,17 @@ jobs:
     strategy:
       matrix:
         model: [chronos-2, chronos-2-small]
-    env:
-      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    permissions:
+      id-token: write # mint the GitHub OIDC token for the HF trusted-publishing exchange
+      contents: read
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
       - run: uv sync --frozen --extra chronos
       - name: Export + verify
         run: uv run openstef-checkpoints export "${{ matrix.model }}"
-      - name: Publish
-        # dispatch honours the private toggle (defaults to private).
-        run: uv run openstef-checkpoints publish "${{ matrix.model }}" ${{ inputs.private && '--private' || '--public' }}
+      - name: Publish to Hugging Face (OIDC trusted publishing)
+        # The repo is pre-created on HF (a trusted publisher can only be configured on an
+        # existing repo), so --no-create-repo; HF_OIDC_RESOURCE is set by the CLI to the
+        # target repo. Visibility is whatever the repo was created with.
+        run: uv run openstef-checkpoints publish "${{ matrix.model }}" --no-create-repo

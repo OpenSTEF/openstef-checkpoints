@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2025 Contributors to the OpenSTEF project <openstef@lfenergy.org>
+# SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfenergy.org>
 #
 # SPDX-License-Identifier: MPL-2.0
 
@@ -41,8 +41,8 @@ switch = [
 
 [tool.poe.tasks.licensecheck]
 help = "Audit distributed dependency licenses (runtime + [chronos]) for MPL-2.0 compatibility"
-# Feed licensecheck the lock export scoped to what we ship (runtime + the chronos extra,
-# excluding the dev group): deterministic, and avoids depgather needing a resolver on PATH.
+# Feed licensecheck the lock export scoped to what we ship (excluding the dev group):
+# deterministic, and avoids depgather needing a resolver on PATH.
 args = [ { name = "check", type = "boolean", help = "Exit non-zero on an incompatible license" } ]
 control.expr = "check"
 switch = [
