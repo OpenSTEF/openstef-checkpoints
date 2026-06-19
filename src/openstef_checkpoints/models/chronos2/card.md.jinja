@@ -1,14 +1,22 @@
 ---
 license: {{ source_license }}
 library_name: onnx
+pipeline_tag: time-series-forecasting
+base_model: {{ source_model_id }}
+inference: false
 tags:
+  - time-series
   - time-series-forecasting
+  - forecasting
   - chronos
+  - chronos-2
+  - foundation-model
   - onnx
   - openstef
+  - energy
 ---
 
-# {{ slug }} — ONNX checkpoints
+# {{ slug }} ONNX checkpoints
 
 ONNX export of [`{{ source_model_id }}`](https://huggingface.co/{{ source_model_id }}) for
 [OpenSTEF](https://github.com/OpenSTEF/openstef), produced by
@@ -27,7 +35,33 @@ publishing.
 {% endfor %}
 
 Pick by deployment target: **static fp32** is the portable, CoreML-eligible default; **int8** for size;
-**dynamic** when context/horizon must vary.
+**dynamic** when context or horizon must vary.
+
+## Static and dynamic variants
+
+The dynamic variants leave the input axes free, so the context length, horizon, and number of covariate
+series can vary at run time. The static variants freeze every axis to a fixed size. That is what makes
+them eligible for CoreML and quicker to load, at the cost of only accepting the one window they were
+built for.
+{% if window.static_batch %}
+The static graph is built for:
+
+- Batch: {{ window.static_batch }} series (one target plus {{ window.static_batch - 1 }} covariates)
+- Context: {{ window.context_length }} steps ({{ (window.context_length * window.resolution_minutes / 1440)|round|int }} days at {{ window.resolution_minutes }}-minute resolution)
+- Horizon: {{ window.horizon_length }} steps ({{ (window.horizon_length * window.resolution_minutes / 1440)|round|int }} days)
+
+With those sizes its ONNX inputs are fixed to:
+
+| Input | Shape |
+|---|---|
+| `context` | ({{ window.static_batch }}, {{ window.context_length }}) |
+| `group_ids` | ({{ window.static_batch }},) |
+| `attention_mask` | ({{ window.static_batch }}, {{ window.context_length }}) |
+| `future_covariates` | ({{ window.static_batch }}, {{ window.horizon_length }}) |
+| `future_covariates_mask` | ({{ window.static_batch }}, {{ window.horizon_length }}) |
+
+To run a different window, use a dynamic variant.
+{% endif %}
 
 ## Provenance
 
@@ -43,9 +77,12 @@ These ONNX checkpoints are derived from
 license, **{{ source_license }}**. Attribution and all rights to the model weights remain with the
 upstream authors; if you use the model in research, please cite their work.
 
-**Modifications.** The original weights were converted from PyTorch to ONNX and exported in several
-shape and precision variants (static or dynamic shapes; fp32, fp16, or int8). The weights were not
-retrained, fine-tuned, or otherwise altered.
+**Modifications.** The weights are not retrained, fine-tuned, or otherwise changed. At the graph level
+the export does two things, both verified to match the reference model within the deviation shown above:
+it reimplements a few operators the ONNX tracer does not support (NaN-aware mean and sum, arcsinh, and
+the patch reshape) with equivalent ONNX ops, and it recomputes the rotary-embedding frequency buffer
+that the upstream loader leaves uninitialised. It then exports the result in static or dynamic shape
+variants at fp32 or int8 precision.
 
 The tooling that produced these files
 ([`openstef-checkpoints`](https://github.com/OpenSTEF/openstef-checkpoints)) is licensed MPL-2.0,

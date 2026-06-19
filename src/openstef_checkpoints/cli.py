@@ -24,7 +24,14 @@ from rich.table import Table
 
 from openstef_checkpoints.models.chronos2.config import Chronos2Model, Variant
 from openstef_checkpoints.models.registry import MODELS
-from openstef_checkpoints.publish import CARD_NAME, ExportProvenance, Manifest, VariantRecord, publish_repo
+from openstef_checkpoints.publish import (
+    CARD_NAME,
+    ExportProvenance,
+    ExportWindow,
+    Manifest,
+    VariantRecord,
+    publish_repo,
+)
 from openstef_checkpoints.settings import Settings
 
 app = typer.Typer(help="Export, verify, and publish foundation-model ONNX checkpoints.", no_args_is_help=True)
@@ -130,8 +137,18 @@ def export(
         source_model_id=config.source_model_id,
         exporter_revision=os.environ.get("GITHUB_SHA", "unknown"),
     )
+    # The window is model-level, so read it off any variant; the static batch comes from a
+    # published static variant (one target plus its frozen covariates), or None if none is shipped.
+    metadata = results[0].checkpoint.metadata
+    static = next((r.checkpoint.metadata for r in results if r.variant.publish and r.variant.static), None)
+    window = ExportWindow(
+        context_length=metadata.context_length,
+        horizon_length=metadata.horizon_length,
+        resolution_minutes=metadata.resolution_minutes,
+        static_batch=static.max_covariates + 1 if static and static.max_covariates else None,
+    )
     repo_id = cli.settings.repo_id(config.slug)
-    Manifest(slug=config.slug, repo_id=repo_id, provenance=provenance, variants=records).write(model_dir)
+    Manifest(slug=config.slug, repo_id=repo_id, provenance=provenance, window=window, variants=records).write(model_dir)
     _print_results(records)
 
 
