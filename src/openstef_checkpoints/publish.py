@@ -64,6 +64,26 @@ class ExportProvenance(BaseModel):
         )
 
 
+class ExportWindow(BaseModel):
+    """The forecast window the graphs were built for, and the batch a static graph freezes to.
+
+    Model-level facts the card needs to describe the shapes, kept in the manifest so publishing
+    can render them without re-loading the model.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    context_length: int = Field(gt=0, description="History timesteps the graph consumes.")
+    horizon_length: int = Field(gt=0, description="Forecast timesteps the graph emits.")
+    resolution_minutes: int = Field(gt=0, description="Sampling interval the window assumes, in minutes.")
+    static_batch: int | None = Field(
+        default=None,
+        gt=0,
+        description="Series a static graph is frozen to (one target plus its covariates), "
+        "or None when no static variant is published.",
+    )
+
+
 class VariantRecord(BaseModel):
     """One published variant's identity and its deviation from the torch reference."""
 
@@ -90,6 +110,7 @@ class Manifest(BaseModel):
     slug: str = Field(description="Model slug, e.g. 'chronos-2'.")
     repo_id: str = Field(description="HuggingFace repo this model publishes to.")
     provenance: ExportProvenance = Field(description="Where the checkpoints came from.")
+    window: ExportWindow = Field(description="The window and static batch the graphs were built for.")
     variants: list[VariantRecord] = Field(description="One record per exported variant.")
 
     def write(self, directory: Path) -> Path:
@@ -154,6 +175,7 @@ class Manifest(BaseModel):
             source_model_id=self.provenance.source_model_id,
             source_license=source_license,
             provenance=self.provenance,
+            window=self.window,
             variants=self.publishable,
         )
 

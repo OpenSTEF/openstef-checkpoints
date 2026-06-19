@@ -43,7 +43,7 @@ override-dependencies = [ "transformers>=5" ]
 # Export runs on CPU (the runners have no GPU), so resolve torch from PyTorch's CPU-only
 # index. This drops the multi-GB CUDA stack (the nvidia-* / cuda-* wheels) the default PyPI
 # build pulls in as Linux transitives and that nothing here ever uses. Numerically identical
-# on CPU — the CUDA build only adds device kernels the export never touches.
+# on CPU, since the CUDA build only adds device kernels the export never touches.
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
@@ -86,7 +86,7 @@ ignore_licenses = [ "apache software license", "apache license 2.0" ]
 # We install the CPU-only torch build, which pulls no nvidia-* / cuda-* wheels (they are gone
 # from the lock and the venv). But licensecheck audits against PyPI metadata, where `torch` is
 # the CUDA build that still declares those proprietary-but-redistributable CUDA libraries as
-# dependencies — so they resurface here even though we never ship them. The globs ignore the
+# dependencies, so they resurface here even though we never ship them. The globs ignore the
 # whole family at once, so a CUDA version bump (new -cuNN names) does not break the check.
 ignore_packages = [ "nvidia*", "cuda*" ]
 

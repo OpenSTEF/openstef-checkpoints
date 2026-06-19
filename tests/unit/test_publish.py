@@ -7,7 +7,7 @@
 from pathlib import Path
 
 from openstef_checkpoints.models.chronos2.config import Chronos2Model
-from openstef_checkpoints.publish import ExportProvenance, Manifest, VariantRecord
+from openstef_checkpoints.publish import ExportProvenance, ExportWindow, Manifest, VariantRecord
 
 
 def _manifest() -> Manifest:
@@ -20,6 +20,12 @@ def _manifest() -> Manifest:
             exporter_revision="def456",
             tooling="onnx=1.17 onnxruntime=1.20 torch=2.4",
             exported_at="2026-06-17T00:00:00+00:00",
+        ),
+        window=ExportWindow(
+            context_length=5760,
+            horizon_length=672,
+            resolution_minutes=15,
+            static_batch=4,
         ),
         variants=[
             VariantRecord(
@@ -58,13 +64,21 @@ def test_manifest_round_trips_through_directory(tmp_path: Path) -> None:
 
 
 def test_card_advertises_only_published_variants_with_license_and_provenance() -> None:
-    """The card lists published variants, the upstream license, and provenance — never build-only ones."""
+    """The card lists published variants, the upstream license, and provenance, never build-only ones."""
     card = _manifest().render_card(Chronos2Model.CARD_TEMPLATE, source_license="apache-2.0")
     assert "chronos-2_static.onnx" in card
     assert "chronos-2_fp16.onnx" not in card  # build-only (publish=False) is withheld
     assert "amazon/chronos-2" in card
     assert "apache-2.0" in card  # upstream weights license
     assert "def456" in card  # exporter revision stamped
+
+
+def test_card_describes_the_static_shape() -> None:
+    """The card spells out the fixed batch, context, and horizon a static graph bakes in."""
+    card = _manifest().render_card(Chronos2Model.CARD_TEMPLATE, source_license="apache-2.0")
+    assert "`context` | (4, 5760)" in card  # batch from static_batch, context from the window
+    assert "`future_covariates` | (4, 672)" in card  # horizon from the window
+    assert "60 days at 15-minute resolution" in card  # 5760 steps * 15 min
 
 
 def test_selection_splits_held_back_failing_and_uploadable() -> None:

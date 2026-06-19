@@ -147,7 +147,7 @@ class _RoPEModule(Protocol):
     Chronos-2's RoPE computes `inv_freq` in `__init__` and registers it as a *non-persistent*
     buffer, so it is deliberately absent from the checkpoint. `from_pretrained` rebuilds the
     model from the checkpoint without re-running that init, leaving `inv_freq` as uninitialised
-    memory — garbage that corrupts the positional embedding and, when its bytes decode as
+    memory, garbage that corrupts the positional embedding and, when its bytes decode as
     NaN/inf, poisons the whole graph. We detect such modules by these three attributes (rather
     than the upstream class name) and recompute the buffer.
     """
@@ -332,7 +332,7 @@ class Chronos2Exporter(BaseModel):
         rows = [synthetic_series(self._context_length, seed=seed + r) for r in range(batch)]
         rows[0] = inject_nan_gaps(rows[0], gaps=2, gap_length=max(self._context_length // 20, 1), seed=seed)
         context = np.stack(rows).astype(np.float32)
-        # Record the gaps in the attention mask, then zero them out of the context — exactly
+        # Record the gaps in the attention mask, then zero them out of the context, exactly
         # what the runtime forecaster's zero_fill_with_mask does. Feeding raw NaN instead
         # relies on every masked op suppressing it, which holds on some ONNX Runtime builds
         # but leaks NaN into the output on others (e.g. the Linux CI runner); the model only
