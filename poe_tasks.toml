@@ -42,12 +42,15 @@ switch = [
 [tool.poe.tasks.licensecheck]
 help = "Audit distributed dependency licenses (runtime + [chronos]) for MPL-2.0 compatibility"
 # Feed licensecheck the lock export scoped to what we ship (excluding the dev group):
-# deterministic, and avoids depgather needing a resolver on PATH.
+# deterministic, and avoids depgather needing a resolver on PATH. torch is dropped from the
+# export (--no-emit-package) because its CPU build is a local-version (`+cpu`) wheel whose exact
+# version licensecheck cannot resolve against PyPI; licensecheck then re-resolves torch itself
+# from PyPI (BSD-3-Clause, compatible). See the nvidia/cuda note in pyproject's licensecheck config.
 args = [ { name = "check", type = "boolean", help = "Exit non-zero on an incompatible license" } ]
 control.expr = "check"
 switch = [
-  { case = "True", shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt --zero --show-only-failing" },
-  { shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt" },
+  { case = "True", shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-emit-package torch --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt --zero --show-only-failing" },
+  { shell = "uv export --frozen --no-dev --extra chronos --no-emit-project --no-emit-package torch --no-hashes -o /tmp/openstef-checkpoints-licensecheck.txt && licensecheck -r /tmp/openstef-checkpoints-licensecheck.txt" },
 ]
 
 [tool.poe.tasks.all]
