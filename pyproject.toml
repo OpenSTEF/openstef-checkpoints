@@ -28,18 +28,19 @@ dependencies = [
   "rich>=13",
   "typer>=0.12",
 ]
+# The Chronos-2 source-model stack. Require >=2.3.0: chronos-forecasting<2.3 pins transformers<5,
+# and transformers 5 silently mis-loads Chronos-2 under those older versions (its non-persistent
+# RoPE/quantile buffers are left zeroed -> a degenerate, near-constant forecaster). The torch-vs-ONNX
+# export gate cannot catch that, since both sides share the same broken weights. 2.3.0 (2026-06-18)
+# rewrote RoPE onto the transformers-5 standard rotary API, so the buffers initialise correctly and
+# the model loads cleanly on huggingface-hub>=1.0 — no transformers override needed.
 optional-dependencies.chronos = [
-  "chronos-forecasting>=2.2.2", # the Chronos-2 line
+  "chronos-forecasting>=2.3.0", # the Chronos-2 line; >=2.3.0 loads correctly on transformers 5
   "torch>=2.4",
 ]
 scripts.openstef-checkpoints = "openstef_checkpoints.cli:app"
 
 [tool.uv]
-# chronos pins transformers<5, but transformers 4.x caps huggingface-hub<1.0 and so
-# blocks OIDC publishing. transformers 5 lifts the cap; the export deviation gate
-# confirms chronos 2.2.2 stays numerically correct on it, so override the pin.
-override-dependencies = [ "transformers>=5" ]
-
 # Export runs on CPU (the runners have no GPU), so resolve torch from PyTorch's CPU-only
 # index. This drops the multi-GB CUDA stack (the nvidia-* / cuda-* wheels) the default PyPI
 # build pulls in as Linux transitives and that nothing here ever uses. Numerically identical
