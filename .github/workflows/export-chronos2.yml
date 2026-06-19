@@ -24,8 +24,8 @@ jobs:
       id-token: write # mint the GitHub OIDC token for the HF trusted-publishing exchange
       contents: read
     steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v6.0.3
+      - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen --extra chronos
       - name: Export + verify
         run: uv run openstef-checkpoints export "${{ matrix.model }}"
