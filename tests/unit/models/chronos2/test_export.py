@@ -62,8 +62,14 @@ def test_degenerate_model_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 def test_int8_judged_by_relative_mean_not_elementwise() -> None:
     """int8 passes on small aggregate error even when the elementwise gate failed on an outlier."""
     # Elementwise verdict is False (a single large pointwise drift), but mean relative error is
-    # well under budget — the realistic int8 case.
+    # well under budget — chronos-2's realistic int8 case (~2.5% synthetic, ~1% real MAE).
     report = _report(rel_mean=0.025, within_tolerance=False)
+    assert Chronos2Exporter._passes(report, Variant(precision="int8", static=False))
+
+
+def test_int8_passes_for_the_smaller_model_higher_but_acceptable_drift() -> None:
+    """chronos-2-small quantises worse (~11% synthetic) yet is faithful in practice (~2% real MAE)."""
+    report = _report(rel_mean=0.11, within_tolerance=False)
     assert Chronos2Exporter._passes(report, Variant(precision="int8", static=False))
 
 
