@@ -19,10 +19,6 @@ lint.ignore = [
   "PGH003", # allow generic type-ignores
   "TRY003", # simpler exception messages
 ]
-lint.per-file-ignores."./src/openstef_checkpoints/cli.py" = [
-  "FBT001", # typer uses boolean flags as command parameters
-  "FBT002",
-]
 lint.per-file-ignores."./tests/*" = [
   "ARG",     # fixtures are functionally relevant even when unused
   "D",       # docstring rules

@@ -7,10 +7,18 @@
 # code change). No HF_TOKEN secret: publish authenticates by exchanging the GitHub
 # OIDC token for a short-lived, repo-scoped HF token (trusted publisher configured on
 # each HF repo).
+#
+# `dry_run` defaults to true: a dispatch builds, verifies, and reports what it *would*
+# publish without uploading, so a run can be validated first. Uncheck it to publish.
 name: export-chronos2
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and verify only; report what would be published without uploading."
+        type: boolean
+        default: true
 
 jobs:
   export:
@@ -32,5 +40,6 @@ jobs:
       - name: Publish to Hugging Face (OIDC trusted publishing)
         # The repo is pre-created on HF (a trusted publisher can only be configured on an
         # existing repo), so --no-create-repo; HF_OIDC_RESOURCE is set by the CLI to the
-        # target repo. Visibility is whatever the repo was created with.
-        run: uv run openstef-checkpoints publish "${{ matrix.model }}" --no-create-repo
+        # target repo. Visibility is whatever the repo was created with. With dry_run the CLI
+        # runs every check and reports the intended uploads, then stops before touching the Hub.
+        run: uv run openstef-checkpoints publish "${{ matrix.model }}" --no-create-repo ${{ inputs.dry_run && '--dry-run' || '' }}
