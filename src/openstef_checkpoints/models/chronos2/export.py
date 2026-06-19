@@ -293,6 +293,13 @@ class Chronos2Exporter(BaseModel):
         rows = [synthetic_series(self._context_length, seed=seed + r) for r in range(batch)]
         rows[0] = inject_nan_gaps(rows[0], gaps=2, gap_length=max(self._context_length // 20, 1), seed=seed)
         context = np.stack(rows).astype(np.float32)
+        # Record the gaps in the attention mask, then zero them out of the context — exactly
+        # what the runtime forecaster's zero_fill_with_mask does. Feeding raw NaN instead
+        # relies on every masked op suppressing it, which holds on some ONNX Runtime builds
+        # but leaks NaN into the output on others (e.g. the Linux CI runner); the model only
+        # ever sees finite values plus the mask.
+        attention_mask = np.isfinite(context).astype(np.float32)
+        context = np.nan_to_num(context, nan=0.0)
         future = np.zeros((batch, self._horizon), dtype=np.float32)
         future_mask = np.zeros((batch, self._horizon), dtype=np.float32)
         for r in range(1, batch):
@@ -301,10 +308,7 @@ class Chronos2Exporter(BaseModel):
         return {
             "context": context,
             "group_ids": np.arange(batch, dtype=np.int64),
-            # Missing history is masked out (0 at the NaN gaps): the NaN-aware norm still
-            # sees the gaps in its statistics, but attention ignores them, so they do not
-            # propagate NaN to the output.
-            "attention_mask": np.isfinite(context).astype(np.float32),
+            "attention_mask": attention_mask,
             "future_covariates": future,
             "future_covariates_mask": future_mask,
         }

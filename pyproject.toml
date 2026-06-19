@@ -40,17 +40,6 @@ scripts.openstef-checkpoints = "openstef_checkpoints.cli:app"
 # confirms chronos 2.2.2 stays numerically correct on it, so override the pin.
 override-dependencies = [ "transformers>=5" ]
 
-# Export and verification run on CPU (the GPU/ANE paths were ruled out), so pull torch
-# from PyTorch's CPU index. The default Linux wheel bundles the whole CUDA stack
-# (nvidia-* — hundreds of MB) that CI downloads and never uses; torch+cpu drops it.
-[[tool.uv.index]]
-name = "pytorch-cpu"
-url = "https://download.pytorch.org/whl/cpu"
-explicit = true
-
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-
 [dependency-groups]
 dev = [
   "licensecheck>=2025.1",
@@ -82,11 +71,10 @@ possibly-missing-import = "ignore"    # large number of false positives, capture
 # Apache-licensed dependency is compatible. licensecheck does not encode that pairing and
 # reports it as a failure, so the two spellings it emits for Apache are ignored here.
 ignore_licenses = [ "apache software license", "apache license 2.0" ]
-# We install CPU-only torch, so the NVIDIA CUDA wheels (nvidia-*, cuda-*) are never in our
-# lock or distribution. But licensecheck resolves torch's dependencies from its PyPI
-# metadata, which still declares those Linux GPU wheels, so on a Linux runner it recurses
-# into them and flags their proprietary licenses. They are not part of what we ship, so
-# ignore them. A new CUDA major adds new -cuNN-suffixed names, which then fail until added.
+# NVIDIA CUDA runtime libraries (the nvidia-* and cuda-* wheels below) are proprietary but
+# redistributable, and only reach us as Linux GPU transitives of torch. They are not part
+# of what we distribute. A new CUDA major adds new -cuNN-suffixed names, which then fail
+# the check until reviewed and added here.
 ignore_packages = [
   "cuda-bindings",
   "cuda-toolkit",
