@@ -60,14 +60,13 @@ class Chronos2Model(BaseModel):
     CARD_TEMPLATE: ClassVar[Path] = Path(__file__).parent / "card.md.jinja"
 
     #: Variants built by default, most-preferred first. int8-static is omitted: int8 never
-    #: reaches CoreML, and CPU, CUDA, and TensorRT all take the dynamic graph. fp16 is built
-    #: and checked but not shipped while its accuracy issue is open.
+    #: reaches CoreML, and CPU, CUDA, and TensorRT all take the dynamic graph. fp16 is left
+    #: out entirely: it is not shipped (an open accuracy issue) and its conversion currently
+    #: produces an invalid graph for some models, so building it only breaks the export.
     DEFAULT_VARIANTS: ClassVar[tuple[Variant, ...]] = (
         Variant(precision="fp32", static=True),
         Variant(precision="fp32", static=False),
         Variant(precision="int8", static=False),
-        Variant(precision="fp16", static=True, publish=False),
-        Variant(precision="fp16", static=False, publish=False),
     )
 
     slug: str = Field(description="Short identifier and filename stem, e.g. 'chronos-2'.")
