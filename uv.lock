@@ -67,15 +67,6 @@ wheels = [
 ]
 
 [[package]]
-name = "appdirs"
-version = "1.4.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/d7/d8/05696357e0311f5b5c316d7b95f46c669dd9c15aaeecbb48c7d0aeb88c40/appdirs-1.4.4.tar.gz", hash = "sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41", size = 13470, upload-time = "2020-05-11T07:59:51.037Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/00/2344469e2084fb287c2e0b57b72910309874c3245463acd6cf5e3db69324/appdirs-1.4.4-py2.py3-none-any.whl", hash = "sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128", size = 9566, upload-time = "2020-05-11T07:59:49.499Z" },
-]
-
-[[package]]
 name = "attrs"
 version = "26.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -238,16 +229,17 @@ wheels = [
 
 [[package]]
 name = "depgather"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "loguru" },
+    { name = "pydantic" },
     { name = "requirements-parser" },
     { name = "tomli" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6e/10/ee4b3e4cb6db15f555fc87d2af348d6d8f0d86df3aaa63aa35d866287c17/depgather-0.4.0.tar.gz", hash = "sha256:661facd6fffd709ef57086461fcc749cbfcb073eac1518db7db2cd02f60c3bd5", size = 64422, upload-time = "2026-06-15T17:36:58.656Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/86/7902c4ee46f6d94d75b204569151924400455fb2a1b11ad2fafb5eff3ce5/depgather-0.5.0.tar.gz", hash = "sha256:0a9dd0980c9c8ae01c5acfbe76c97d2b5209a299defa520331a61a0846816f65", size = 112880, upload-time = "2026-06-17T20:47:35.243Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/f6/e04953fde6306b8d2f1b817df0e99fd57773be889f99d521399bcf5b09dc/depgather-0.4.0-py3-none-any.whl", hash = "sha256:8bd2a813a4b9cfe385daea7d8addcfc03fd9b12254dc119918d5c65ccd26461f", size = 12407, upload-time = "2026-06-15T17:36:57.452Z" },
+    { url = "https://files.pythonhosted.org/packages/75/45/4a7b3a6f2f26777428da4951576d62ad97ebc7737f42b39af1e0dc1efed0/depgather-0.5.0-py3-none-any.whl", hash = "sha256:ff92b0e2bde382537d139a2f1819d4d04ef1bf244fd216e0829e35007905e565", size = 16429, upload-time = "2026-06-17T20:47:33.973Z" },
 ]
 
 [[package]]
@@ -419,24 +411,24 @@ wheels = [
 
 [[package]]
 name = "licensecheck"
-version = "2026.0.5"
+version = "2026.0.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "appdirs" },
     { name = "configurator" },
     { name = "depgather" },
     { name = "license-expression" },
     { name = "loguru" },
     { name = "markdown" },
+    { name = "platformdirs" },
     { name = "pydantic" },
     { name = "requests" },
     { name = "requests-cache" },
     { name = "rich" },
     { name = "tomli" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7d/32/83a6d2f5a97947a2b8e7611329dd8ed9b39857786b009ac201623cbb2154/licensecheck-2026.0.5.tar.gz", hash = "sha256:621250322ec81d02f717e0a55a83618900683dc80b04ef37148982cfe5de664e", size = 63934, upload-time = "2026-06-16T21:09:08.767Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/da/f191dcadc61233c88fb1397a32bc6050aca93bf964dc50d453c48cc23faa/licensecheck-2026.0.8.tar.gz", hash = "sha256:9f5504ac55d8f953de9ee52ea7d3a924cc3306facc538a3e912403c92ddf4612", size = 63312, upload-time = "2026-06-18T20:14:55.968Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/00/411deec28469ba9316f45f31ad12eebfbf528b91f213af44b8f027ee0331/licensecheck-2026.0.5-py3-none-any.whl", hash = "sha256:9544c14d773e223b8536e7947547c8280792c18626c5c8dee86b246d2b76e736", size = 25722, upload-time = "2026-06-16T21:09:07.572Z" },
+    { url = "https://files.pythonhosted.org/packages/10/10/f084c570ed0fb239758cfde96aa1848f36174c6838b7bc4d7bf9a7faed39/licensecheck-2026.0.8-py3-none-any.whl", hash = "sha256:a2e16b3c4204bfc3b9d3878930516067adb7657aeb6fb3f523c5a2e93b936467", size = 24451, upload-time = "2026-06-18T20:14:53.963Z" },
 ]
 
 [[package]]
@@ -1013,16 +1005,16 @@ wheels = [
 
 [[package]]
 name = "pydantic-settings"
-version = "2.14.1"
+version = "2.14.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "python-dotenv" },
     { name = "typing-inspection" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/60/1d1e59c9c90d54591469ada7d268251f71c24bdb765f1a8a832cee8c6653/pydantic_settings-2.14.1.tar.gz", hash = "sha256:e874d3bec7e787b0c9958277956ed9b4dd5de6a80e162188fdaff7c5e26fd5fa", size = 235551, upload-time = "2026-05-08T13:40:06.542Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5c/b5/8f48e906c3e0205276e8bd8cb7512217a87b2685304d64be27cad5b3019f/pydantic_settings-2.14.2.tar.gz", hash = "sha256:c19dd64b19097f1de80184f0cc7b0272a13ae6e170cbf240a3e27e381ed14a5f", size = 237700, upload-time = "2026-06-19T13:44:56.324Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ae/8d/f1af3832f5e6eb13ba94ee809e72b8ecb5eef226d27ee0bef7d963d943c7/pydantic_settings-2.14.1-py3-none-any.whl", hash = "sha256:6e3c7edfd8277687cdc598f56e5cff0e9bfff0910a3749deaa8d4401c3a2b9de", size = 60964, upload-time = "2026-05-08T13:40:04.958Z" },
+    { url = "https://files.pythonhosted.org/packages/77/c1/6e422f34e569cf8e18df68d1939c81c099d2b61e4f7d9621c8a77560799c/pydantic_settings-2.14.2-py3-none-any.whl", hash = "sha256:a20c97b37910b6550d5ea50fbcc2d4187defe58cd57070b73863d069419c9440", size = 61715, upload-time = "2026-06-19T13:44:55.02Z" },
 ]
 
 [[package]]
@@ -1036,7 +1028,7 @@ wheels = [
 
 [[package]]
 name = "pytest"
-version = "9.1.0"
+version = "9.1.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
@@ -1045,9 +1037,9 @@ dependencies = [
     { name = "pluggy" },
     { name = "pygments" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/84/0e/b5858858d74958632c49b72cb25a3976ff9f632397626715be71c89d3971/pytest-9.1.0.tar.gz", hash = "sha256:41dd9148c08072446394cefd3d79701701335a9f4cae69ba92e39f6c7f5c061c", size = 1634181, upload-time = "2026-06-13T18:52:45.983Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/5a/ba30a81239b909821b3153e303e7def45178bf353da4f72380e6c5e8793b/pytest-9.1.0-py3-none-any.whl", hash = "sha256:8ebb0e7888bdf2bdfc602ec51f8f62d50200af37356c74e503c79a94f5c81f32", size = 386453, upload-time = "2026-06-13T18:52:44.045Z" },
+    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
 ]
 
 [[package]]
