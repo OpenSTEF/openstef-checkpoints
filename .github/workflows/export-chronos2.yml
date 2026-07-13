@@ -32,7 +32,7 @@ jobs:
       id-token: write # mint the GitHub OIDC token for the HF trusted-publishing exchange
       contents: read
     steps:
-      - uses: actions/checkout@v6.0.3
+      - uses: actions/checkout@v7.0.0
       - uses: astral-sh/setup-uv@v7
       - run: uv sync --frozen --extra chronos
       - name: Export + verify
