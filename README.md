@@ -4,12 +4,12 @@ SPDX-FileCopyrightText: 2026 Contributors to the OpenSTEF project <openstef@lfen
 SPDX-License-Identifier: MPL-2.0
 -->
 
-# openstef-checkpoints
+# OpenSTEF-checkpoints
 
 Tooling to export, verify, and publish the ONNX foundation-model checkpoints used by
 [OpenSTEF](https://github.com/OpenSTEF/openstef).
 
-## Overview
+## What is OpenSTEF-checkpoints
 
 OpenSTEF runs pre-trained forecasting foundation models through ONNX Runtime. This
 project produces those ONNX checkpoints from their upstream source models and publishes
@@ -37,7 +37,7 @@ a JSON-Schema conformance test on both sides rather than a shared dependency.
 | `src/openstef_checkpoints/` | Model-agnostic machinery: export, verification, publishing, metadata schema, and the CLI. |
 | `src/openstef_checkpoints/models/<model>/` | Model-specific code: the export wrapper and the variant and sizing configuration. |
 
-## Installation
+## How to Install
 
 The project uses [uv](https://docs.astral.sh/uv/). The base install provides the metadata
 schema, ONNX-graph verification, publishing, and the CLI. Exporting a checkpoint additionally
@@ -48,7 +48,7 @@ uv sync                  # base environment
 uv sync --extra chronos  # add torch and chronos-forecasting to run exports
 ```
 
-## Usage
+## How to Use
 
 The `openstef-checkpoints` command exposes three subcommands:
 
@@ -61,7 +61,7 @@ openstef-checkpoints publish chronos-2     # upload the verified variants to Hug
 Exports are written to `checkpoints/<model>/`. See `openstef-checkpoints <command> --help`
 for the available options.
 
-## Development
+## Quick Development Setup
 
 Tasks are defined with [poethepoet](https://poethepoet.natn.io/) and run through uv:
 
@@ -76,3 +76,30 @@ uv run poe all --check   # full CI sequence
 
 Licensed under the [Mozilla Public License 2.0](LICENSE.md). Published checkpoints carry
 the license of their upstream source model.
+
+## Contributing
+
+We welcome contributions to OpenSTEF-checkpoints! 
+
+**[Read our Contributing Guide](https://openstef.github.io/openstef/contribute/)** - documentation for contributors including:
+
+- How to report bugs and suggest features
+- Documentation improvements and examples
+- Code contributions and development setup
+- Sharing datasets and real-world use cases
+
+## Citations
+
+If you use OpenSTEF in your research or publications, please cite the project. Refer to the [CITATION.cff](CITATION.cff) file in this repository for the preferred citation format, or use:
+
+> Contributors to the OpenSTEF project. *OpenSTEF — Open Short-Term Energy Forecasting*. LF Energy, 2017–2025. Available at: https://github.com/OpenSTEF/openstef
+
+## Contact
+
+- **Slack:** [LF Energy Slack](https://slack.lfenergy.org/)
+- **Email:** openstef@lfenergy.org
+- **Community meeting:** [OpenSTEF four-weekly community meeting](https://lf-energy.atlassian.net/wiki/spaces/OS/pages/32278358/OpenSTEF+four-weekly+community+meeting)
+- **Issues:** [GitHub Issue Tracker](https://github.com/OpenSTEF/openstef-checkpoints/issues)
+- **Support Guide:** [How to get help](https://openstef.github.io/openstef/project/support.html)
+
+
